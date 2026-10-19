@@ -1,0 +1,8 @@
+build/
+lib/
+*.o
+*.a
+*.so
+*.wav
+mp7_test
+
