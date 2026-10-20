@@ -177,9 +177,9 @@ void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
     int32_t b0;
     int32_t c;
 
-    /* A zero resonance would divide by zero below. Clamp it to the
-     * smallest representable Q (1/256), which is far below the reference's
-     * 0.2 minimum anyway. */
+    /* A zero resonance would divide by zero below. Clamp it to the smallest
+     * representable Q (1/256), which is far below the 0.2 minimum of the
+     * panel range anyway. */
     if (res_q88 == 0u) {
         res_q88 = 1u;
     }
@@ -218,8 +218,8 @@ int32_t poppy_biquad_process(struct poppy_biquad *filter, int32_t sample_q31)
 
 /* Soft clip over [-3, 3], with the table's /10 scaling undone.
  *
- * The result is Q31 and may exceed 1.0 (up to the reference's +/-10), so it
- * is returned as int64_t. */
+ * The result is Q31 and may exceed 1.0 (up to +/-10), so it is returned as
+ * int64_t. */
 int64_t poppy_softclip_q31(int64_t sample_q31)
 {
     const int64_t limit = 3 * Q31_ONE;
@@ -324,8 +324,8 @@ static int64_t engine_noise(struct mp7_voice *voice)
 
     pre = poppy_mul_q30_q31(amp, filtered);
 
-    /* filtered is scaled by 1/100 relative to the reference; the 0.1 before
-     * the reference's soft clip therefore becomes a *10 here. */
+    /* filtered is scaled by 1/100, so the 0.1 ahead of the soft clip
+     * becomes a *10 here. */
     clipped = poppy_softclip_q31((int64_t)pre * 10);
 
     if ((voice->amp_env.stage == POPPY_ENV_IDLE) &&
@@ -396,8 +396,8 @@ static int64_t engine_quijada(struct mp7_voice *voice)
     body_sine = next_sine(&voice->body_osc);
     body = poppy_mul_q30_q31(amp, body_sine);
 
-    /* The reference parks the body oscillator while both secondary
-     * envelopes are idle. */
+    /* The body oscillator is parked while both secondary envelopes are
+     * idle. */
     if ((voice->long_env.stage == POPPY_ENV_IDLE) &&
         (voice->short_env.stage == POPPY_ENV_IDLE)) {
         voice->body_osc.phase = 0;

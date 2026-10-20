@@ -63,9 +63,9 @@ extern const int16_t poppy_sine[POPPY_SINE_TABLE_SIZE];
 
 /* Soft-clip curve over x in [-3, 3], indexed through u = x/3 in [-1, 1].
  *
- * The stored value is softclip(3*u) / 10 in Q31. The reference divides by 10
- * implicitly through its small-signal gain, so the engine multiplies this
- * table's result by 10 to recover the reference's +/-10 saturation range.
+ * The stored value is softclip(3*u) / 10 in Q31. The /10 is undone by the
+ * engine, which multiplies this table's result by 10 to recover the +/-10
+ * saturation range.
  * Q31 would overflow at 10, so the caller accumulates in int64_t. */
 extern const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE];
 
@@ -114,13 +114,38 @@ enum mp7_engine {
     MP7_ENGINE_QUIJADA
 };
 
+/* Global mix controls. The master volume is the panel value (0..4); the mixer
+ * applies the 0.5 factor itself. The direct gains are the three
+ * Additional Volume faders, in Tambourine/Guiro/Quijada order. */
+#define POPPY_MIXER_DIRECT_COUNT 3
+
+struct poppy_mixer {
+    int32_t panel_volume_q16; /* the panel Volume, 0..4; the mixer applies 0.5x */
+    int32_t balance_q16;
+    int32_t balance_a_gain_q16; /* cached, recomputed on a Balance change */
+    int32_t balance_b_gain_q16;
+    int32_t direct_gain_q16[POPPY_MIXER_DIRECT_COUNT];
+};
+
+/* Balance touches exactly two groups: Base against Hihat/Cymbal 1/Cymbal 2.
+ * The group tags are neutral because the mixer core is shared. */
+enum poppy_mix_group {
+    POPPY_MIX_GROUP_NONE = 0,
+    POPPY_MIX_GROUP_A,
+    POPPY_MIX_GROUP_B
+};
+
+#define MP7_DIRECT_TAMBOURINE 0u
+#define MP7_DIRECT_GUIRO 1u
+#define MP7_DIRECT_QUIJADA 2u
+#define MP7_DIRECT_INDEX_NONE 0xFFu
+
 /* One voice. The union is not used; the engines share the named fields so the
  * dispatch stays readable, at the cost of a few unused bytes per voice. */
 struct mp7_voice {
     mp7_instr instr;
     uint8_t engine;
     uint8_t active;
-    int32_t velocity_q16;
 
     struct poppy_osc body_osc;
     struct poppy_osc aux_osc;
@@ -136,6 +161,10 @@ struct mp7_voice {
 
     int32_t tick_q30;       /* noise tone depth, from the fixed Tick value */
     int32_t level2_q16;     /* dual-tone second-oscillator level, Q16 (65536 = 1.0) */
+    int32_t level_q16;      /* fixed per-voice Level, Q16 */
+    int32_t pan_q16;        /* fixed per-voice Pan, Q16 (32768 = centre) */
+    uint8_t balance_group;  /* enum poppy_mix_group */
+    uint8_t direct_gain_index; /* index into mixer.direct_gain_q16, or none */
     uint32_t prng;          /* xorshift32 state, never zero */
     int32_t last_rate;      /* Guiro rate-oscillator sign detector */
     int32_t prev_clock;     /* Quijada comparator history, Q30 */
@@ -174,12 +203,17 @@ struct mp7_context_s {
     uint32_t magic;                         /* MP7_CONTEXT_MAGIC once initialized */
     struct mp7_voice voices[MP7_INSTR_COUNT];
     struct mp7_sequencer sequencer;
+    struct poppy_mixer mixer;
 };
 
 /* Voice and engine internals, exercised directly by the Phase 2 test harness.
- * These are not part of the public API. */
+ * These are not part of the public API.
+ *
+ * A trigger carries no velocity: the panel has no velocity control and the
+ * level that reaches the output is the voice's own Level, times the Balance
+ * or direct gain, times the master Volume. */
 void mp7_voice_init_all(struct mp7_context_s *ctx);
-void mp7_voice_trigger(struct mp7_voice *voice, uint8_t velocity);
+void mp7_voice_trigger(struct mp7_voice *voice);
 void mp7_voice_release(struct mp7_voice *voice);
 int64_t mp7_voice_process(struct mp7_voice *voice);
 
@@ -211,5 +245,17 @@ void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
                                uint32_t sample_rate);
 int32_t poppy_biquad_process(struct poppy_biquad *filter, int32_t sample_q31);
 int64_t poppy_softclip_q31(int64_t sample_q31);
+
+void poppy_mixer_init(struct poppy_mixer *mixer);
+void poppy_mixer_set_volume(struct poppy_mixer *mixer, int32_t panel_volume_q16);
+void poppy_mixer_set_balance(struct poppy_mixer *mixer, int32_t balance_q16);
+void poppy_mixer_set_direct_gain(struct poppy_mixer *mixer,
+                                 unsigned int index,
+                                 int32_t gain_q16);
+int32_t poppy_mixer_balance_gain_q16(const struct poppy_mixer *mixer,
+                                     unsigned int group);
+int64_t poppy_mixer_pan_left(int64_t sample_q31, int32_t pan_q16);
+int64_t poppy_mixer_pan_right(int64_t sample_q31, int32_t pan_q16);
+int16_t poppy_mixer_to_q15(int64_t sum_q31, int32_t panel_volume_q16);
 
 #endif /* MP7_INTERNAL_H */

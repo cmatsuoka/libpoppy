@@ -64,6 +64,7 @@ check: $(TEST)
 	./$(TEST) --noise
 	./$(TEST) --guiro
 	./$(TEST) --quijada
+	./$(TEST) --mixer
 	./$(TEST) --pattern
 	./$(TEST) --rhythms $(BUILD)
 

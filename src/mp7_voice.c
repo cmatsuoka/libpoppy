@@ -3,8 +3,9 @@
  *
  * The original unit does not expose synthesis parameters to the user, so the
  * values below are compiled in. Frequencies are in Hz, times in microseconds,
- * and resonance in Q8.8. Level, Pan and the other mixer controls are deliberately
- * absent here; those are the panel controls handled by the mixer.
+ * and resonance in Q8.8. Level and Pan are fixed here as well, but they are
+ * mixer inputs rather than synthesis parameters: the mixer applies them
+ * together with the panel's Volume, Balance and direct gains.
  */
 
 #include <string.h>
@@ -80,7 +81,33 @@ static void voice_setup(struct mp7_voice *voice,
     memset(voice, 0, sizeof(*voice));
     voice->instr = instr;
     voice->engine = config->engine;
-    voice->velocity_q16 = (64 * 65536) / 127;
+
+    voice->level_q16 = POPPY_Q16_ONE;
+    voice->pan_q16 = POPPY_Q16_ONE / 2;
+    voice->balance_group = POPPY_MIX_GROUP_NONE;
+    voice->direct_gain_index = MP7_DIRECT_INDEX_NONE;
+
+    switch (instr) {
+    case MP7_INSTR_BASS:
+        voice->balance_group = POPPY_MIX_GROUP_A;
+        break;
+    case MP7_INSTR_HIHAT:
+    case MP7_INSTR_CYMBAL_1:
+    case MP7_INSTR_CYMBAL_2:
+        voice->balance_group = POPPY_MIX_GROUP_B;
+        break;
+    case MP7_INSTR_TAMBOURINE:
+        voice->direct_gain_index = MP7_DIRECT_TAMBOURINE;
+        break;
+    case MP7_INSTR_GUIRO:
+        voice->direct_gain_index = MP7_DIRECT_GUIRO;
+        break;
+    case MP7_INSTR_QUIJADA:
+        voice->direct_gain_index = MP7_DIRECT_QUIJADA;
+        break;
+    default:
+        break;
+    }
 
     seed = 0x9E3779B9u + (uint32_t)instr * 0x85EBCA6Bu;
     voice->prng = (seed != 0u) ? seed : 1u;
@@ -135,21 +162,19 @@ void mp7_voice_init_all(struct mp7_context_s *ctx)
 {
     unsigned int i;
 
+    /* voice_setup() resets the whole voice, so it also resets the fixed
+     * Level and Pan. They are constants today; if they ever become
+     * per-voice settings, a sample-rate change must not clear them. */
     for (i = 0; i < (unsigned int)MP7_INSTR_COUNT; i++) {
         voice_setup(&ctx->voices[i], (mp7_instr)i, &voice_config[i], ctx->sample_rate);
     }
 }
 
-void mp7_voice_trigger(struct mp7_voice *voice, uint8_t velocity)
+void mp7_voice_trigger(struct mp7_voice *voice)
 {
     uint32_t r1;
     uint32_t r2;
     int32_t t;
-
-    if (velocity > 127u) {
-        velocity = 127u;
-    }
-    voice->velocity_q16 = (int32_t)(((uint32_t)velocity * 65536u) / 127u);
 
     voice->active = 1;
 
@@ -185,8 +210,8 @@ void mp7_voice_trigger(struct mp7_voice *voice, uint8_t velocity)
 
     case MP7_ENGINE_QUIJADA:
         poppy_env_trigger(&voice->amp_env);
-        /* The secondary envelopes are deliberately not reset: the reference
-         * trigger leaves them running and only restarts the body envelope. */
+        /* The secondary envelopes are deliberately not reset: the trigger
+         * leaves them running and only restarts the body envelope. */
 
         /* Both thresholds are re-randomized on every trigger:
          * t = 0.1 + fabs(u) * 0.5, with u uniform in [-1, 1). In Q30 that is
@@ -212,12 +237,11 @@ void mp7_voice_release(struct mp7_voice *voice)
 
 int64_t mp7_voice_process(struct mp7_voice *voice)
 {
-    int64_t sample;
-
     if (!voice->active) {
         return 0;
     }
 
-    sample = mp7_engine_process(voice);
-    return (sample * (int64_t)voice->velocity_q16) >> 16;
+    /* The voice's Level, the pan split and the master gain are all applied
+     * by the mixer, so the engine returns the raw voice signal. */
+    return mp7_engine_process(voice);
 }

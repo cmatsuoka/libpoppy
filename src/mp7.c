@@ -1,10 +1,9 @@
 /*
  * mp7.c - context handling and entry points of the Mini Pops library.
  *
- * The context owns the 15 voice states and the rhythm sequencer. mp7_process()
- * advances the sequencer, renders every voice and sums them into a temporary
- * centred stereo mix. The pan/level/balance mixer replaces that sum in the
- * mixer phase; until then every voice is placed at the centre.
+ * The context owns the 15 voice states, the rhythm sequencer and the global
+ * mix controls. mp7_process() advances the sequencer, renders every voice and
+ * sums it into a stereo mix through the shared mixer core.
  */
 
 #include <string.h>
@@ -49,6 +48,7 @@ void mp7_init(mp7_context *ctx, uint32_t sample_rate)
     ctx->magic = MP7_CONTEXT_MAGIC;
     mp7_voice_init_all(ctx);
     mp7_pattern_init(ctx);
+    poppy_mixer_init(&ctx->mixer);
 }
 
 void mp7_set_sample_rate(mp7_context *ctx, uint32_t sample_rate)
@@ -82,9 +82,30 @@ void mp7_reset(mp7_context *ctx)
     mp7_init(ctx, sample_rate);
 }
 
+/* Effective per-voice gain: its fixed Level, scaled by Balance or by the
+ * direct-percussion gain when the voice belongs to one of those controls. */
+static int32_t voice_gain_q16(const struct mp7_context_s *ctx,
+                              const struct mp7_voice *voice)
+{
+    int32_t gain = voice->level_q16;
+
+    gain = poppy_mul_q16(gain,
+                         poppy_mixer_balance_gain_q16(&ctx->mixer,
+                                                      voice->balance_group));
+
+    if (voice->direct_gain_index != MP7_DIRECT_INDEX_NONE) {
+        gain = poppy_mul_q16(gain,
+                             ctx->mixer.direct_gain_q16[voice->direct_gain_index]);
+    }
+
+    return gain;
+}
+
 void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
 {
+    int32_t voice_gain[MP7_INSTR_COUNT];
     size_t frame;
+    unsigned int instr;
 
     if (stereo_out == 0) {
         return;
@@ -95,21 +116,36 @@ void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
         return;
     }
 
+    /* The effective per-voice gain only changes when a mix control changes,
+     * and a control cannot change while a block is being rendered, so the
+     * gain is computed once per block instead of once per sample. */
+    for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
+        voice_gain[instr] = voice_gain_q16(ctx, &ctx->voices[instr]);
+    }
+
     for (frame = 0u; frame < frames; frame++) {
-        int64_t sum = 0;
-        int16_t sample;
-        unsigned int instr;
+        int64_t sum_left = 0;
+        int64_t sum_right = 0;
 
         /* Triggers are evaluated before the sample is rendered, so hits are
          * sample-accurate. */
         mp7_pattern_tick(ctx);
 
         for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-            sum += mp7_voice_process(&ctx->voices[instr]);
+            const struct mp7_voice *voice = &ctx->voices[instr];
+            int64_t sample = mp7_voice_process(&ctx->voices[instr]);
+
+            if (sample == 0) {
+                continue;
+            }
+
+            sample = poppy_mul_q31_gain(sample, voice_gain[instr]);
+            sum_left += poppy_mixer_pan_left(sample, voice->pan_q16);
+            sum_right += poppy_mixer_pan_right(sample, voice->pan_q16);
         }
 
-        sample = (int16_t)poppy_q31_to_q15(poppy_sat_i64_to_i32(sum));
-        stereo_out[2u * frame] = sample;
-        stereo_out[2u * frame + 1u] = sample;
+        stereo_out[2u * frame] = poppy_mixer_to_q15(sum_left, ctx->mixer.panel_volume_q16);
+        stereo_out[2u * frame + 1u] = poppy_mixer_to_q15(sum_right,
+                                                         ctx->mixer.panel_volume_q16);
     }
 }

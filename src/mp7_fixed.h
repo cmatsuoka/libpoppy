@@ -26,6 +26,10 @@
  * coefficients reach about -2.0 at low frequencies. */
 #define POPPY_Q30_ONE ((int32_t)1 << 30)
 
+/* Q16 is used for gain parameters. 1.0 is exactly 65536, so unity gain is
+ * exactly the identity in a multiply-and-shift-by-16. */
+#define POPPY_Q16_ONE ((int32_t)1 << 16)
+
 /* Saturating (a * b) >> 31, Q31 x Q31 -> Q31.
  *
  * The only value that does not fit in int32_t is (-1.0 * -1.0) == +1.0, which
@@ -141,10 +145,14 @@ static inline int32_t poppy_q15_to_q31(int32_t q15)
  * The shift is by 16, so a gain of 1.0 (65536) is exactly the identity and
  * a gain of 4.0 is exactly 4x. The shift is arithmetic on a signed value,
  * so a negative sample stays negative.
+ *
+ * The sample is int64_t because it may already be outside the Q31 range:
+ * the noise engine's soft clip saturates at +/-10, so a voice sample can be
+ * ten times full scale before any gain is applied.
  */
-static inline int64_t poppy_mul_q31_gain(int32_t sample_q31, int32_t gain_q16)
+static inline int64_t poppy_mul_q31_gain(int64_t sample_q31, int32_t gain_q16)
 {
-    return ((int64_t)sample_q31 * (int64_t)gain_q16) >> 16;
+    return (sample_q31 * (int64_t)gain_q16) >> 16;
 }
 
 /* Q31 -> Q15, rounded and saturated. */
@@ -171,6 +179,12 @@ static inline int32_t poppy_sat_i64_to_i32(int64_t value)
         return INT32_MIN;
     }
     return (int32_t)value;
+}
+
+/* Q16 x Q16 -> Q16. */
+static inline int32_t poppy_mul_q16(int32_t a_q16, int32_t b_q16)
+{
+    return (int32_t)(((int64_t)a_q16 * (int64_t)b_q16) >> 16);
 }
 
 /* Q30 x Q31 -> Q31. */

@@ -44,5 +44,6 @@ mp7_process(ctx, block, 128);      /* from the audio ISR */
 ./mp7_test --noise            # verify the noise voices are uncorrelated
 ./mp7_test --guiro            # verify Guiro gate hold and note-off release
 ./mp7_test --quijada          # verify Quijada frequencies, thresholds and comparator
+./mp7_test --mixer            # verify pan, Volume, Balance and direct gains
 ./mp7_test --pattern          # verify the 20 patterns, combination and timing
 ./mp7_test --rhythms dir      # render all 20 rhythms and two combinations

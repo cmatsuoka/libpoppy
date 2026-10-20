@@ -14,6 +14,7 @@
  *   --noise             verify the 6 noise voices are uncorrelated
  *   --guiro             verify Guiro gate hold and note-off release
  *   --quijada           verify Quijada frequencies, thresholds and comparator
+ *   --mixer             verify pan, Volume, Balance and direct gains
  *   --pattern           verify the 20 patterns, combination and timing
  *   --rhythms [dir]     render all 20 rhythms and two combinations to WAV
  *   --help              this text
@@ -277,7 +278,7 @@ static void render_voice_i32(mp7_context *ctx,
     size_t i;
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_voice_trigger(&ctx->voices[instr], 64u);
+    mp7_voice_trigger(&ctx->voices[instr]);
 
     for (i = 0; i < frames; i++) {
         int64_t sample;
@@ -913,7 +914,7 @@ static int command_quijada(void)
     }
 
     for (i = 0; i < 8; i++) {
-        mp7_voice_trigger(voice, 64u);
+        mp7_voice_trigger(voice);
         if ((voice->threshold_lo < low) || (voice->threshold_lo > high) ||
             (voice->threshold_hi < low) || (voice->threshold_hi > high)) {
             fail("Quijada threshold is outside [0.1, 0.6]");
@@ -958,6 +959,361 @@ static int command_quijada(void)
     return failures == 0 ? 0 : 1;
 }
 
+static int channel_peak(const int16_t *stereo, size_t frames, unsigned int channel)
+{
+    int peak = 0;
+    size_t i;
+
+    for (i = 0u; i < frames; i++) {
+        int value = (int)stereo[2u * i + channel];
+
+        if (value < 0) {
+            value = -value;
+        }
+        if (value > peak) {
+            peak = value;
+        }
+    }
+    return peak;
+}
+
+static int stereo_is_silent(const int16_t *stereo, size_t frames)
+{
+    size_t i;
+
+    for (i = 0u; i < frames * 2u; i++) {
+        if (stereo[i] != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void render_trigger(mp7_context *ctx, mp7_instr instr,
+                           int16_t *stereo, size_t frames)
+{
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_voice_trigger(&ctx->voices[instr]);
+    mp7_process(ctx, stereo, frames);
+}
+
+static int command_mixer(void)
+{
+    mp7_context *ctx = context_new();
+    const size_t frames = 4096u;
+    int16_t *stereo = (int16_t *)malloc(frames * 2u * sizeof(int16_t));
+    int16_t *other = (int16_t *)malloc(frames * 2u * sizeof(int16_t));
+    unsigned int i;
+
+    if ((stereo == 0) || (other == 0)) {
+        printf("FAIL: out of memory\n");
+        free(stereo);
+        free(other);
+        free(ctx);
+        return 1;
+    }
+
+    /* Defaults: Volume 1.0 (master gain 0.5), Balance centre, each direct
+     * gain at its 0.5 default. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    if ((ctx->mixer.panel_volume_q16 != POPPY_Q16_ONE) ||
+        (ctx->mixer.balance_q16 != POPPY_Q16_ONE / 2)) {
+        fail("the mixer defaults are not Volume 1.0 / Balance 0.5");
+    }
+    for (i = 0u; i < POPPY_MIXER_DIRECT_COUNT; i++) {
+        if (ctx->mixer.direct_gain_q16[i] != POPPY_Q16_ONE / 2) {
+            fail("a direct gain does not default to 0.5");
+            break;
+        }
+    }
+    for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        if ((ctx->voices[i].level_q16 != POPPY_Q16_ONE) ||
+            (ctx->voices[i].pan_q16 != POPPY_Q16_ONE / 2)) {
+            fail("a voice does not default to Level 1.0 / Pan 0.5");
+            break;
+        }
+    }
+    if (failures == 0) {
+        ok("the mixer defaults to Volume 1.0, Balance 0.5 and direct gain 0.5");
+    }
+
+    /* A centred voice appears equally in both channels, and a hard pan sends
+     * it entirely to one side. */
+    render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
+    if ((channel_peak(stereo, frames, 0u) == 0) ||
+        (channel_peak(stereo, frames, 0u) != channel_peak(stereo, frames, 1u))) {
+        fail("a centred voice is not equal in both channels");
+    } else {
+        ok("a centred voice is equal in both channels");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+    ctx->voices[MP7_INSTR_BASS].pan_q16 = 0;
+    mp7_process(ctx, stereo, frames);
+    if ((channel_peak(stereo, frames, 0u) == 0) ||
+        (channel_peak(stereo, frames, 1u) != 0)) {
+        fail("pan 0 is not hard left");
+    } else {
+        ok("pan 0 sends a voice hard left");
+    }
+
+    /* The centre pan splits the voice 0.5 / 0.5, so a hard-left voice is
+     * exactly twice as loud in the left channel as a centred one. Together
+     * with the default master gain of 0.5 that puts a default hit at 0.25
+     * per channel (-12.04 dBFS) at the anchor of +/-1.0 for a Level 1.0
+     * voice. */
+    {
+        int centred;
+        int hard_left;
+
+        render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
+        centred = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+        ctx->voices[MP7_INSTR_BASS].pan_q16 = 0;
+        mp7_process(ctx, stereo, frames);
+        hard_left = channel_peak(stereo, frames, 0u);
+
+        if ((centred == 0) ||
+            (hard_left < (2 * centred) - 1) ||
+            (hard_left > (2 * centred) + 1)) {
+            printf("FAIL: the centre pan does not split the voice in half (peaks %d -> %d)\n",
+                   centred, hard_left);
+            failures++;
+        } else {
+            ok("the centre pan splits the voice 0.5 / 0.5");
+        }
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+    ctx->voices[MP7_INSTR_BASS].pan_q16 = POPPY_Q16_ONE;
+    mp7_process(ctx, stereo, frames);
+    if ((channel_peak(stereo, frames, 1u) == 0) ||
+        (channel_peak(stereo, frames, 0u) != 0)) {
+        fail("pan 1.0 is not hard right");
+    } else {
+        ok("pan 1.0 sends a voice hard right");
+    }
+
+    /* The master Volume is applied as 0.5 * value: 1.0 is half scale, 2.0 is
+     * unity, and 0 is silence. */
+    if (poppy_mixer_to_q15(INT32_MAX, POPPY_Q16_ONE) != 16384) {
+        fail("Volume 1.0 is not half the panel value as a master gain");
+    } else {
+        ok("Volume 1.0 applies the 0.5x master gain");
+    }
+    if ((poppy_mixer_to_q15(INT32_MAX, 2 * POPPY_Q16_ONE) != 32767) ||
+        (poppy_mixer_to_q15(INT32_MIN, 2 * POPPY_Q16_ONE) != -32768)) {
+        fail("the master gain does not saturate at full scale");
+    } else {
+        ok("the master gain saturates once, at the final Q15 conversion");
+    }
+
+    render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
+    {
+        int base_peak = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_volume(&ctx->mixer, 2 * POPPY_Q16_ONE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+        mp7_process(ctx, stereo, frames);
+        {
+            int doubled = channel_peak(stereo, frames, 0u);
+            int expected = 2 * base_peak;
+
+            if ((doubled < expected - 2) || (doubled > expected + 2)) {
+                printf("FAIL: Volume 2.0 gave %d, expected about %d\n",
+                       doubled, expected);
+                failures++;
+            } else {
+                ok("Volume 2.0 gives unity master gain (double the default)");
+            }
+        }
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_volume(&ctx->mixer, 0);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+        mp7_process(ctx, stereo, frames);
+        if (!stereo_is_silent(stereo, frames)) {
+            fail("Volume 0 is not silent");
+        } else {
+            ok("Volume 0 mutes the mix");
+        }
+    }
+
+    /* Balance is a Base-versus-cymbals crossfade. Snare 1 belongs to neither
+     * group and must not move. */
+    render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
+    {
+        int bass_bottom;
+        int bass_top;
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_balance(&ctx->mixer, 0);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+        mp7_process(ctx, stereo, frames);
+        bass_bottom = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_balance(&ctx->mixer, POPPY_Q16_ONE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+        mp7_process(ctx, stereo, frames);
+        bass_top = channel_peak(stereo, frames, 0u);
+
+        /* Balance takes the Base from gain 1.0 down to 0.2, a factor of 5,
+         * and never mutes it completely. */
+        {
+            int expected = 5 * bass_top;
+            int tolerance = expected / 10 + 2;
+
+            if ((bass_top == 0) ||
+                (bass_bottom < expected - tolerance) ||
+                (bass_bottom > expected + tolerance)) {
+                printf("FAIL: Balance does not attenuate Base to 0.2 (peaks %d -> %d)\n",
+                       bass_bottom, bass_top);
+                failures++;
+            } else {
+                ok("Balance attenuates Base to about 0.2 at the right");
+            }
+        }
+    }
+
+    render_trigger(ctx, MP7_INSTR_HIHAT, stereo, frames);
+    {
+        int hihat_left;
+        int hihat_right;
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_balance(&ctx->mixer, 0);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_HIHAT]);
+        mp7_process(ctx, stereo, frames);
+        hihat_left = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_balance(&ctx->mixer, POPPY_Q16_ONE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_HIHAT]);
+        mp7_process(ctx, stereo, frames);
+        hihat_right = channel_peak(stereo, frames, 0u);
+
+        /* The cymbal group goes from 0.2 at the left to 1.0 at the right, the
+         * same factor of 5, and is never muted completely. */
+        {
+            int expected = 5 * hihat_left;
+            int tolerance = expected / 10 + 2;
+
+            if ((hihat_left == 0) ||
+                (hihat_right < expected - tolerance) ||
+                (hihat_right > expected + tolerance)) {
+                printf("FAIL: Balance does not attenuate the cymbal group to 0.2 (peaks %d -> %d)\n",
+                       hihat_left, hihat_right);
+                failures++;
+            } else {
+                ok("Balance attenuates Hihat/Cymbal 1/Cymbal 2 to about 0.2 at the left");
+            }
+        }
+    }
+
+    render_trigger(ctx, MP7_INSTR_SNARE_1, stereo, frames);
+    {
+        int snare_bottom;
+        int snare_top;
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_balance(&ctx->mixer, 0);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_SNARE_1]);
+        mp7_process(ctx, stereo, frames);
+        snare_bottom = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_balance(&ctx->mixer, POPPY_Q16_ONE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_SNARE_1]);
+        mp7_process(ctx, stereo, frames);
+        snare_top = channel_peak(stereo, frames, 0u);
+
+        if (snare_bottom != snare_top) {
+            printf("FAIL: Balance moved Snare 1 (%d -> %d)\n",
+                   snare_bottom, snare_top);
+            failures++;
+        } else {
+            ok("Balance leaves Snare 1 untouched");
+        }
+    }
+
+    /* The three direct-percussion gains multiply their own voice only. */
+    render_trigger(ctx, MP7_INSTR_TAMBOURINE, stereo, frames);
+    {
+        int tamb_default = channel_peak(stereo, frames, 0u);
+        int tamb_full;
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_direct_gain(&ctx->mixer, MP7_DIRECT_TAMBOURINE,
+                                    POPPY_Q16_ONE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_TAMBOURINE]);
+        mp7_process(ctx, stereo, frames);
+        tamb_full = channel_peak(stereo, frames, 0u);
+
+        if ((tamb_default == 0) || (tamb_full < tamb_default + tamb_default / 2)) {
+            printf("FAIL: the Tambourine direct gain does not scale its voice\n");
+            failures++;
+        } else {
+            ok("the Tambourine direct gain scales its voice");
+        }
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_direct_gain(&ctx->mixer, MP7_DIRECT_TAMBOURINE, 0);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_TAMBOURINE]);
+        mp7_process(ctx, stereo, frames);
+        if (!stereo_is_silent(stereo, frames)) {
+            fail("a zero direct gain does not silence its voice");
+        } else {
+            ok("a zero direct gain silences its voice");
+        }
+    }
+
+    {
+        static const mp7_instr direct_voices[3] = {
+            MP7_INSTR_TAMBOURINE, MP7_INSTR_GUIRO, MP7_INSTR_QUIJADA
+        };
+        static const unsigned int direct_index[3] = {
+            MP7_DIRECT_TAMBOURINE, MP7_DIRECT_GUIRO, MP7_DIRECT_QUIJADA
+        };
+        unsigned int v;
+
+        for (v = 0u; v < 3u; v++) {
+            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+            poppy_mixer_set_direct_gain(&ctx->mixer, direct_index[v], 0);
+            mp7_voice_trigger(&ctx->voices[direct_voices[v]]);
+            mp7_process(ctx, stereo, frames);
+            if (!stereo_is_silent(stereo, frames)) {
+                printf("FAIL: direct gain %u did not silence its voice\n", v);
+                failures++;
+            }
+        }
+
+        /* A non-direct voice must not be affected by the direct gains. */
+        render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        for (v = 0u; v < 3u; v++) {
+            poppy_mixer_set_direct_gain(&ctx->mixer, direct_index[v], 0);
+        }
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+        mp7_process(ctx, other, frames);
+        if (memcmp(stereo, other, frames * 2u * sizeof(int16_t)) != 0) {
+            fail("the direct gains changed a non-direct voice");
+        } else {
+            ok("the direct gains affect only Tambourine, Guiro and Quijada");
+        }
+    }
+
+    free(stereo);
+    free(other);
+    free(ctx);
+    return failures == 0 ? 0 : 1;
+}
+
 static void usage(const char *program)
 {
     printf("usage: %s <command>\n\n", program);
@@ -971,6 +1327,7 @@ static void usage(const char *program)
            "                     (default dir: build)\n"
            "  --noise            verify the 6 noise voices are uncorrelated\n"
            "  --guiro            verify Guiro gate hold and note-off release\n"
+           "  --mixer            verify pan, Volume, Balance and direct gains\n"
            "  --pattern          verify the factory patterns, combination and timing\n"
            "  --rhythms [dir]    render all 20 rhythms and two combinations to WAV\n"
            "                     files (default dir: build)\n"
@@ -1017,6 +1374,9 @@ int main(int argc, char **argv)
     }
     if (strcmp(command, "--quijada") == 0) {
         return command_quijada();
+    }
+    if (strcmp(command, "--mixer") == 0) {
+        return command_mixer();
     }
     if (strcmp(command, "--pattern") == 0) {
         return command_pattern();

@@ -22,7 +22,7 @@ extern "C" {
  * mp7_set_sample_rate(). The FM-1 runs at 44100. */
 #define MP7_DEFAULT_SAMPLE_RATE 44100u
 
-/* The 15 instruments, in the order the reference numbers its voice slots. */
+/* The 15 instruments, in voice-slot order. */
 typedef enum {
     MP7_INSTR_BASS = 0,
     MP7_INSTR_SNARE_1,

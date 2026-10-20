@@ -538,7 +538,7 @@ const int16_t poppy_sine[POPPY_SINE_TABLE_SIZE] = {
 
 /* Soft-clip transfer curve. Entry i corresponds to u = -1 + 2*i/255 and
  * stores softclip(3*u) / 10 in Q31. The engine multiplies by 10 after the
- * lookup to restore the reference's +/-10 saturation range. */
+ * lookup to restore the +/-10 saturation range. */
 const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
     -2147483647, -2147483385, -2147481525, -2147476401,
     -2147466264, -2147449288, -2147423556, -2147387067,

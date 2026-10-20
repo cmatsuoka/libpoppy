@@ -16,7 +16,6 @@
 
 #include "mp7_internal.h"
 
-#define MP7_SEQUENCER_VELOCITY 64u
 #define MP7_SUB_STEPS_STRAIGHT 2u
 #define MP7_SUB_STEPS_TRIPLET 3u
 #define MP7_DEFAULT_TEMPO 120u
@@ -182,7 +181,7 @@ static void fire_column(struct mp7_context_s *ctx)
                 /* Re-entering an adjacent X keeps the gate open, so the
                  * ratchet runs without a release gap. */
                 if (seq->guiro_gated == 0u) {
-                    mp7_voice_trigger(&ctx->voices[instr], MP7_SEQUENCER_VELOCITY);
+                    mp7_voice_trigger(&ctx->voices[instr]);
                     seq->guiro_gated = 1u;
                 }
             } else if (seq->guiro_gated != 0u) {
@@ -190,7 +189,7 @@ static void fire_column(struct mp7_context_s *ctx)
                 seq->guiro_gated = 0u;
             }
         } else if (hit != 0u) {
-            mp7_voice_trigger(&ctx->voices[instr], MP7_SEQUENCER_VELOCITY);
+            mp7_voice_trigger(&ctx->voices[instr]);
         }
     }
 }
