@@ -579,13 +579,13 @@ static int command_pattern(void)
 
     mp7_init(ctx, sample_rate);
 
-    /* The factory data itself: hits are 0/1, the five short loops enable 48
-     * columns, everything else enables all 64, and the triplet flags match. */
+    /* The factory data itself: a column mask only uses the rhythm
+     * instrument bits, the five short loops enable 48 columns, everything
+     * else enables all 64, and the triplet flags match. */
     for (rhythm = 0u; rhythm < (unsigned int)MP7_RHYTHM_COUNT; rhythm++) {
         const struct mp7_factory_rhythm *pattern = &mp7_factory_rhythms[rhythm];
         int expect_short = 0;
         int expect_triplet = 0;
-        unsigned int instr;
         unsigned int column;
 
         for (i = 0u; i < 5u; i++) {
@@ -610,15 +610,12 @@ static int command_pattern(void)
             failures++;
         }
 
-        for (instr = 0u; instr < (unsigned int)MP7_PATTERN_MELODIC_ROWS; instr++) {
-            for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-                if (pattern->notes[instr][column] > 1u) {
-                    printf("FAIL: %s row %u column %u is not 0/1\n",
-                           mp7_rhythm_names[rhythm], instr, column);
-                    failures++;
-                    instr = (unsigned int)MP7_PATTERN_MELODIC_ROWS;
-                    break;
-                }
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if ((pattern->notes[column] & ~MP7_PATTERN_RHYTHM_MASK) != 0u) {
+                printf("FAIL: %s column %u uses the percussion bits\n",
+                       mp7_rhythm_names[rhythm], column);
+                failures++;
+                break;
             }
         }
     }
@@ -627,25 +624,19 @@ static int command_pattern(void)
         ok("the 20 factory patterns are well formed");
     }
 
-    /* The shared percussion rows are stored once; combining any rhythm must
-     * place them in rows 13..15 of the combined grid. */
+    /* The shared percussion is stored once; combining any rhythm must place
+     * it in the three percussion bits of every column. */
     for (rhythm = 0u; rhythm < (unsigned int)MP7_RHYTHM_COUNT; rhythm++) {
-        unsigned int row;
         unsigned int column;
 
         mp7_pattern_combine(ctx, (uint32_t)1u << rhythm);
-        for (row = 0u; row < (unsigned int)MP7_PATTERN_PERCUSSION_ROWS; row++) {
-            unsigned int instr = (unsigned int)MP7_PATTERN_MELODIC_ROWS + row;
-
-            for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-                if (ctx->sequencer.notes[instr][column] !=
-                    mp7_shared_percussion_notes[row][column]) {
-                    printf("FAIL: %s did not include percussion row %u\n",
-                           mp7_rhythm_names[rhythm], row);
-                    failures++;
-                    row = (unsigned int)MP7_PATTERN_PERCUSSION_ROWS;
-                    break;
-                }
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if ((ctx->sequencer.notes[column] & MP7_PATTERN_PERCUSSION_MASK) !=
+                mp7_shared_percussion_notes[column]) {
+                printf("FAIL: %s did not include the shared percussion\n",
+                       mp7_rhythm_names[rhythm]);
+                failures++;
+                break;
             }
         }
     }
@@ -658,7 +649,7 @@ static int command_pattern(void)
     if (ctx->sequencer.triplet != 0u) {
         fail("Rock 1 is marked as triplet");
     }
-    if (ctx->sequencer.notes[MP7_INSTR_BASS][12] != 1u) {
+    if ((ctx->sequencer.notes[12] & (1u << MP7_INSTR_BASS)) == 0u) {
         fail("Rock 1 lost its Base hit at column 12");
     }
 
@@ -671,7 +662,7 @@ static int command_pattern(void)
     if (ctx->sequencer.triplet != 0u) {
         fail("Rock 1 + Waltz is marked as triplet");
     }
-    if (ctx->sequencer.notes[MP7_INSTR_SNARE_1][24] != 1u) {
+    if ((ctx->sequencer.notes[24] & (1u << MP7_INSTR_SNARE_1)) == 0u) {
         fail("Rock 1 + Waltz did not OR the Snare 1 hit at column 24");
     }
 

@@ -1,10 +1,11 @@
 /*
  * mp7_pattern.c - rhythm combination and the sample-clocked sequencer.
  *
- * A rhythm is a 15 x 64 note grid plus a 64-column step-enable mask and a
- * triplet flag (see the patterns specification). Selecting several rhythms
- * combines them by OR-ing the note grids, AND-ing the enable masks and OR-ing
- * the triplet flags.
+ * A rhythm is a 64-column note grid plus a 64-column step-enable mask and a
+ * triplet flag (see the patterns specification). A column of the note grid is
+ * a 16-bit instrument mask: bit n is set when instrument n plays in that
+ * column. Selecting several rhythms combines them by OR-ing the note masks,
+ * AND-ing the enable masks and OR-ing the triplet flags.
  *
  * Disabled columns take no time: the sequencer only ever visits enabled
  * columns. Each visited column lasts two sub-steps (straight) or three
@@ -103,8 +104,6 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
     uint64_t enable = ~(uint64_t)0;
     uint8_t triplet = 0u;
     unsigned int rhythm;
-    unsigned int instr;
-    unsigned int row;
     unsigned int column;
 
     seq->selected = selected;
@@ -129,28 +128,16 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
             if (pattern->enable[column] == 0u) {
                 enable &= ~((uint64_t)1u << column);
             }
-        }
-
-        for (instr = 0u; instr < (unsigned int)MP7_PATTERN_MELODIC_ROWS; instr++) {
-            for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-                if (pattern->notes[instr][column] != 0u) {
-                    seq->notes[instr][column] = 1u;
-                }
-            }
+            seq->notes[column] |= pattern->notes[column];
         }
 
         triplet |= pattern->triplet;
     }
 
-    /* The percussion rows are shared by every rhythm, so they are OR-ed in
+    /* The percussion hits are shared by every rhythm, so they are OR-ed in
      * once rather than stored in each grid. */
-    for (row = 0u; row < (unsigned int)MP7_PATTERN_PERCUSSION_ROWS; row++) {
-        instr = (unsigned int)MP7_PATTERN_MELODIC_ROWS + row;
-        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if (mp7_shared_percussion_notes[row][column] != 0u) {
-                seq->notes[instr][column] = 1u;
-            }
-        }
+    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+        seq->notes[column] |= mp7_shared_percussion_notes[column];
     }
 
     seq->enable = enable;
@@ -171,13 +158,14 @@ static void fire_column(struct mp7_context_s *ctx)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
     uint8_t column = seq->column;
+    uint16_t hits = seq->notes[column];
     unsigned int instr;
 
     for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-        uint8_t hit = seq->notes[instr][column];
+        int hit = (int)((hits >> instr) & 1u);
 
         if (instr == (unsigned int)MP7_INSTR_GUIRO) {
-            if (hit != 0u) {
+            if (hit != 0) {
                 /* Re-entering an adjacent X keeps the gate open, so the
                  * ratchet runs without a release gap. */
                 if (seq->guiro_gated == 0u) {
@@ -188,7 +176,7 @@ static void fire_column(struct mp7_context_s *ctx)
                 mp7_voice_release(&ctx->voices[instr]);
                 seq->guiro_gated = 0u;
             }
-        } else if (hit != 0u) {
+        } else if (hit != 0) {
             mp7_voice_trigger(&ctx->voices[instr]);
         }
     }

@@ -31,23 +31,32 @@
 /* A factory rhythm is a note grid plus a step-enable mask and a triplet flag.
  * Columns that are disabled in the combined mask take no time at all.
  *
- * The Tambourine, Guiro and Quijada rows are identical in every factory
- * rhythm, so they are stored once as MP7_PATTERN_PERCUSSION_ROWS shared rows
- * instead of being repeated in each rhythm's grid. The per-rhythm grids hold
- * the MP7_PATTERN_MELODIC_ROWS rows above them. */
+ * A column of the note grid is a 16-bit instrument mask: bit n is set when
+ * instrument n (mp7_instr order) plays in that column, so bit 0 is the Bass
+ * Drum and bit 14 the Quijada.
+ *
+ * The Tambourine, Guiro and Quijada hits are identical in every factory
+ * rhythm, so they are stored once as MP7_PATTERN_PERCUSSION_ROWS shared
+ * instruments instead of being repeated in each rhythm's grid. The per-rhythm
+ * grids hold the MP7_PATTERN_RHYTHM_ROWS instruments below them. */
 #define MP7_PATTERN_STEPS 64
 #define MP7_PATTERN_PERCUSSION_ROWS 3
-#define MP7_PATTERN_MELODIC_ROWS (MP7_INSTR_COUNT - MP7_PATTERN_PERCUSSION_ROWS)
+#define MP7_PATTERN_RHYTHM_ROWS (MP7_INSTR_COUNT - MP7_PATTERN_PERCUSSION_ROWS)
+
+/* The instrument bits a rhythm's own grid may use, and the bits the shared
+ * percussion grid uses. */
+#define MP7_PATTERN_RHYTHM_MASK (((uint32_t)1u << MP7_PATTERN_RHYTHM_ROWS) - 1u)
+#define MP7_PATTERN_PERCUSSION_MASK \
+    ((((uint32_t)1u << MP7_PATTERN_PERCUSSION_ROWS) - 1u) << MP7_PATTERN_RHYTHM_ROWS)
 
 struct mp7_factory_rhythm {
-    const uint8_t (*notes)[MP7_PATTERN_STEPS]; /* melodic rows, mp7_instr order */
-    const uint8_t *enable;                     /* 64 bytes, 0 or 1 */
+    const uint16_t *notes; /* 64 columns, bit n = instrument n plays */
+    const uint8_t *enable;  /* 64 bytes, 0 or 1 */
     uint8_t triplet;
 };
 
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
-extern const uint8_t mp7_shared_percussion_notes[MP7_PATTERN_PERCUSSION_ROWS]
-                                                [MP7_PATTERN_STEPS];
+extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_STEPS];
 extern const char *const mp7_rhythm_names[MP7_RHYTHM_COUNT];
 
 /* Marker written into a context by mp7_init(), so that a half-initialized
@@ -127,7 +136,7 @@ struct poppy_mixer {
     int32_t direct_gain_q16[POPPY_MIXER_DIRECT_COUNT];
 };
 
-/* Balance touches exactly two groups: Base against Hihat/Cymbal 1/Cymbal 2.
+/* Balance touches exactly two groups: Bass Drum against Hihat/Cymbal 1/Cymbal 2.
  * The group tags are neutral because the mixer core is shared. */
 enum poppy_mix_group {
     POPPY_MIX_GROUP_NONE = 0,
@@ -177,7 +186,8 @@ struct mp7_voice {
  * `selected` has one bit per mp7_rhythm. `enable` is the combined 64-column
  * step-enable mask (bit c is set when column c is enabled); it is zero when
  * no rhythm is selected, which means the sequencer is stopped. `notes` is the
- * combined grid in mp7_instr row-major order.
+ * combined grid: one 16-bit instrument mask per column, bit n set when
+ * instrument n plays in that column.
  *
  * The sequencer triggers on sub-step boundaries. A straight column spans two
  * sub-steps and a triplet column spans three; `substep` counts the sub-steps
@@ -189,7 +199,7 @@ struct mp7_sequencer {
     uint32_t sub_step_samples;             /* round(2.5 * sample_rate / tempo) */
     uint32_t sub_step_pos;                 /* samples until the next boundary */
     uint64_t enable;                       /* combined step-enable mask */
-    uint8_t notes[MP7_INSTR_COUNT][MP7_PATTERN_STEPS];
+    uint16_t notes[MP7_PATTERN_STEPS];     /* bit n = instrument n plays */
     uint8_t column;                        /* current enabled column */
     uint8_t substep;                       /* sub-steps elapsed in the column */
     uint8_t triplet;
