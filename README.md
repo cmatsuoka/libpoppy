@@ -55,7 +55,7 @@ Use `mp7_stop_rhythms()` to stop the player.
 ```c
 mp7_set_volume(ctx, 65536);                 /* panel 1.0 -> 0.5x master gain */
 mp7_set_balance(ctx, 32768);                /* center */
-mp7_set_perc_gain(ctx, MP7_INSTR_QUIJADA, 65536);
+mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 65536);
 mp7_set_tempo(ctx, 120);
 
 /* Bank A, Waltz + Samba buttons latched. */

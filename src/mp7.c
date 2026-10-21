@@ -372,7 +372,7 @@ void mp7_set_balance(mp7_context ctx, int32_t balance_q16)
     poppy_mixer_set_balance(&c->mixer, balance_q16);
 }
 
-void mp7_set_perc_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16)
+void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     unsigned int index;

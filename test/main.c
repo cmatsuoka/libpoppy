@@ -1912,20 +1912,20 @@ static int command_api(void)
     }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_perc_gain(ctx, MP7_INSTR_QUIJADA, 100000);
+    mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 100000);
     if (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE) {
-        fail("mp7_set_perc_gain() does not clamp Quijada to 1.0");
+        fail("mp7_set_instr_gain() does not clamp Quijada to 1.0");
     }
-    mp7_set_perc_gain(ctx, MP7_INSTR_GUIRO, -1);
+    mp7_set_instr_gain(ctx, MP7_INSTR_GUIRO, -1);
     if (ctx->mixer.direct_gain_q16[MP7_DIRECT_GUIRO] != 0) {
-        fail("mp7_set_perc_gain() does not clamp Guiro to 0");
+        fail("mp7_set_instr_gain() does not clamp Guiro to 0");
     }
-    mp7_set_perc_gain(ctx, MP7_INSTR_BASS, 0);
+    mp7_set_instr_gain(ctx, MP7_INSTR_BASS, 0);
     if (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE) {
-        fail("mp7_set_perc_gain() changed a voice with no panel fader");
+        fail("mp7_set_instr_gain() changed a voice with no panel fader");
     }
     if (failures == 0) {
-        ok("mp7_set_perc_gain() maps only Tambourine, Guiro and Quijada");
+        ok("mp7_set_instr_gain() maps only Tambourine, Guiro and Quijada");
     }
 
     /* Reset restores the panel defaults. */

@@ -75,7 +75,7 @@ void fm1_panel_perc_gain(mp7_instr instr, uint16_t position)
     uint32_t p = (position > FM1_POSITION_MAX) ? FM1_POSITION_MAX : position;
     int32_t gain_q16 = (int32_t)(((uint32_t)p * 65536u) / FM1_POSITION_MAX);
 
-    mp7_set_perc_gain(fm1_context, instr, gain_q16);
+    mp7_set_instr_gain(fm1_context, instr, gain_q16);
 }
 
 /* Tempo knob: map the raw position onto the library's 1..240 BPM range. */
