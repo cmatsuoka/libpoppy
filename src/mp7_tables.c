@@ -293,7 +293,12 @@ const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
 #define MP7_TIMESIG_2_4 UINT64_C(0x3F3F3F3F3F3F3F3F)
 
 /* The Tambourine, Guiro and Quijada layer. It is the same in every
- * factory rhythm and it is what plays when no rhythm button is pressed. */
+ * factory rhythm and it is what plays when no rhythm button is pressed.
+ *
+ * Tambourine O---O---O---O---O---O---O---O---
+ * Guiro      OOOO----O---O---OOOO----O---O---
+ * Quijada    ------------------------O-------
+ */
 const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS] = {
     0x3000, 0x2000, 0x2000, 0x2000, 0x1000, 0x0000, 0x0000, 0x0000,
     0x3000, 0x0000, 0x0000, 0x0000, 0x3000, 0x0000, 0x0000, 0x0000,
@@ -301,6 +306,12 @@ const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS] = {
     0x7000, 0x0000, 0x0000, 0x0000, 0x3000, 0x0000, 0x0000, 0x0000,
 };
 
+/* Waltz - 3/4, straight, 32-column stored period
+ * Enable     OOOOOOOO....OOOO....OOOOOOOOOOOO
+ * Bass       O-------....----....------------
+ * Snare 2    --------O...----....----O-------
+ * Cymbal 1   O-------....----....------------
+ */
 static const uint16_t mp7_pattern_waltz_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0401, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
     0x0004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
@@ -308,6 +319,12 @@ static const uint16_t mp7_pattern_waltz_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
+/* Samba - 4/4, straight, 64-column stored period
+ * Bass       O-----------O---O---------------O-----------O---O---------------
+ * Conga      ------------------------O-------------------------------O-------
+ * Cowbell    O-------O-------O---O-------O-------O-------O-------O---O-------
+ * Hihat      O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_samba_notes[MP7_PATTERN_STEPS] = {
     0x0141, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0140, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
@@ -319,6 +336,12 @@ static const uint16_t mp7_pattern_samba_notes[MP7_PATTERN_STEPS] = {
     0x0160, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
 };
 
+/* Mambo - 4/4, straight, 32-column stored period
+ * Bass       O-----------O---O---------------
+ * Conga      ------------------------O---O---
+ * Cowbell    O-------O-------O-------O-------
+ * Hihat      O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_mambo_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0141, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0140, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
@@ -326,6 +349,14 @@ static const uint16_t mp7_pattern_mambo_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0160, 0x0000, 0x0000, 0x0000, 0x0120, 0x0000, 0x0000, 0x0000,
 };
 
+/* Rumba - 4/4, straight, 64-column stored period
+ * Bass       O---------------O-------O-------O---------------O-------O-------
+ * Sm Bongo   --------O-----------O-------------------O-----------O-----------
+ * Lg Bongo   O-----------O---O---------------O-----------O---O---------------
+ * Conga      ------------------------O---O---------------------------O---O---
+ * Claves     O-----------O-----------O---------------O-------O---------------
+ * Hihat      O---O-O-O---O---O---O---O---O---O---O-O-O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_rumba_notes[MP7_PATTERN_STEPS] = {
     0x0191, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0100, 0x0000,
     0x0108, 0x0000, 0x0000, 0x0000, 0x0190, 0x0000, 0x0000, 0x0000,
@@ -337,6 +368,12 @@ static const uint16_t mp7_pattern_rumba_notes[MP7_PATTERN_STEPS] = {
     0x0121, 0x0000, 0x0000, 0x0000, 0x0120, 0x0000, 0x0000, 0x0000,
 };
 
+/* Tango - 4/4, straight, 32-column stored period
+ * Bass       O-------O-------O-------O-------
+ * Snare 2    ----------------------------O---
+ * Hihat      O-------O-------O-------O-------
+ * Cymbal 2   ----------------------------O---
+ */
 static const uint16_t mp7_pattern_tango_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0101, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
     0x0101, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
@@ -344,13 +381,27 @@ static const uint16_t mp7_pattern_tango_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0101, 0x0000, 0x0000, 0x0000, 0x0804, 0x0000, 0x0000, 0x0000,
 };
 
-static const uint16_t mp7_pattern_bossanova_notes[MP7_PATTERN_HALF_STEPS] = {
+/* Bossanova - 4/4, straight, 64-column stored period
+ * Bass       O-----------O---O-----------O---O-----------O---O-----------O---
+ * Hihat      O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---
+ * Rimshot    O-----------O-----------O---------------O-----------O-----------
+ */
+static const uint16_t mp7_pattern_bossanova_notes[MP7_PATTERN_STEPS] = {
     0x0301, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0100, 0x0000, 0x0000, 0x0000, 0x0301, 0x0000, 0x0000, 0x0000,
-    0x0301, 0x0000, 0x0000, 0x0000, 0x0300, 0x0000, 0x0000, 0x0000,
-    0x0100, 0x0000, 0x0000, 0x0000, 0x0301, 0x0000, 0x0000, 0x0000,
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
+    0x0300, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
+    0x0300, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0300, 0x0000, 0x0000, 0x0000,
+    0x0100, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
 };
 
+/* Rock 1 - 4/4, straight, 32-column stored period
+ * Bass       O-----------O---O-----------O---
+ * Snare 1    --------O---------------O-------
+ * Hihat      O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_rock1_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0102, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
@@ -358,13 +409,24 @@ static const uint16_t mp7_pattern_rock1_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0102, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
 };
 
+/* Rock 3 - 4/4, straight, 32-column stored period
+ * Bass       O-----------O---O---O-------O---
+ * Snare 1    --------O---------------O-------
+ * Snare 2    --------------O---O-----O-------
+ * Hihat      O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_rock3_notes[MP7_PATTERN_HALF_STEPS] = {
-    0x0105, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
-    0x0106, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
-    0x0105, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
-    0x0106, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
+    0x0102, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0004, 0x0000,
+    0x0101, 0x0000, 0x0004, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
+    0x0106, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
 };
 
+/* March 2/4 - 2/4, triplet, 32-column stored period
+ * Enable     OOOOOO..OOOOOO..OOOOOO..OOOOOO..
+ * Bass       O-----..------..O-----..------..
+ * Snare 2    ------..O-----..------..O-----..
+ */
 static const uint16_t mp7_pattern_march24_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0001, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
     0x0004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
@@ -372,13 +434,24 @@ static const uint16_t mp7_pattern_march24_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
+/* Swing - 4/4, straight, 32-column stored period
+ * Bass       O-------O-------O-------O-------
+ * Snare 2    --------O---------------O-------
+ * Cymbal 2   O-------O-----O-O-------O-----O-
+ */
 static const uint16_t mp7_pattern_swing_notes[MP7_PATTERN_HALF_STEPS] = {
-    0x0001, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0805, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0001, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0005, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0801, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0805, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0800, 0x0000,
+    0x0801, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0805, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0800, 0x0000,
 };
 
+/* Jazz Waltz - 3/4, straight, 32-column stored period
+ * Enable     OOOOOOOO....OOOO....OOOOOOOOOOOO
+ * Bass       O-------....----....------------
+ * Snare 2    ----O---O...----....----O-------
+ * Cymbal 1   O-------....----....------------
+ */
 static const uint16_t mp7_pattern_jazzwaltz_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0401, 0x0000, 0x0000, 0x0000, 0x0004, 0x0000, 0x0000, 0x0000,
     0x0004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
@@ -386,6 +459,12 @@ static const uint16_t mp7_pattern_jazzwaltz_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
+/* Meringue - 4/4, straight, 64-column stored period
+ * Bass       O---------------O---------------O---------------O---------------
+ * Conga      ------------------------O-------------------------------O-------
+ * Cowbell    O-----------O---O---------------O---O-------O---O---------------
+ * Hihat      O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_meringue_notes[MP7_PATTERN_STEPS] = {
     0x0141, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0100, 0x0000, 0x0000, 0x0000, 0x0140, 0x0000, 0x0000, 0x0000,
@@ -397,6 +476,12 @@ static const uint16_t mp7_pattern_meringue_notes[MP7_PATTERN_STEPS] = {
     0x0120, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
 };
 
+/* Cha-Cha - 4/4, straight, 64-column stored period
+ * Bass       O-----------O---O---------------O-----------O---O---------------
+ * Conga      ------------------------O---O---------------------------O---O---
+ * Cowbell    O-------O-------O---O---O-------O---O---O-------O---O---O-------
+ * Hihat      O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_chacha_notes[MP7_PATTERN_STEPS] = {
     0x0141, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0140, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
@@ -408,6 +493,14 @@ static const uint16_t mp7_pattern_chacha_notes[MP7_PATTERN_STEPS] = {
     0x0160, 0x0000, 0x0000, 0x0000, 0x0120, 0x0000, 0x0000, 0x0000,
 };
 
+/* Beguine - 4/4, straight, 32-column stored period
+ * Bass       O---------------O-------O-------
+ * Sm Bongo   ----O-------O-------O-------O---
+ * Lg Bongo   O---------------O-------O-------
+ * Conga      ------------------------O---O---
+ * Hihat      O---O-------O---O---O---O---O---
+ * Cymbal 1   ----O---------------------------
+ */
 static const uint16_t mp7_pattern_beguine_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0111, 0x0000, 0x0000, 0x0000, 0x0508, 0x0000, 0x0000, 0x0000,
     0x0000, 0x0000, 0x0000, 0x0000, 0x0108, 0x0000, 0x0000, 0x0000,
@@ -415,6 +508,11 @@ static const uint16_t mp7_pattern_beguine_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0131, 0x0000, 0x0000, 0x0000, 0x0128, 0x0000, 0x0000, 0x0000,
 };
 
+/* Habanera - 4/4, straight, 32-column stored period
+ * Bass       O-----------O---O-------O-------
+ * Hihat      O-----------O---O-------O-------
+ * Cymbal 2   O-------------------------------
+ */
 static const uint16_t mp7_pattern_habanera_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0901, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
     0x0000, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
@@ -422,13 +520,24 @@ static const uint16_t mp7_pattern_habanera_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0101, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
+/* Slow Rock - 2/4, triplet, 32-column stored period
+ * Enable     OOOOOO..OOOOOO..OOOOOO..OOOOOO..
+ * Bass       O-----..----O-..O-----..----O-..
+ * Hihat      O-O-O-O.O-O-O-O.O-O-O-O.O-O-O-O.
+ * Rimshot    ------..O-----..------..O-----..
+ */
 static const uint16_t mp7_pattern_slowrock_notes[MP7_PATTERN_HALF_STEPS] = {
-    0x0101, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0200, 0x0000, 0x0000, 0x0000, 0x0001, 0x0000, 0x0000, 0x0000,
-    0x0101, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0200, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
+    0x0101, 0x0000, 0x0100, 0x0000, 0x0100, 0x0000, 0x0100, 0x0000,
+    0x0300, 0x0000, 0x0100, 0x0000, 0x0101, 0x0000, 0x0100, 0x0000,
+    0x0101, 0x0000, 0x0100, 0x0000, 0x0100, 0x0000, 0x0100, 0x0000,
+    0x0300, 0x0000, 0x0100, 0x0000, 0x0101, 0x0000, 0x0100, 0x0000,
 };
 
+/* Rock 2 - 4/4, straight, 32-column stored period
+ * Bass       O-----------O---O-----------O---
+ * Snare 1    --------O-----------O-----------
+ * Hihat      O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_rock2_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
     0x0102, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
@@ -436,13 +545,24 @@ static const uint16_t mp7_pattern_rock2_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0100, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
 };
 
+/* Rock 4 - 4/4, straight, 32-column stored period
+ * Bass       O---------------O-----------O---
+ * Snare 1    --------O---------------O-------
+ * Snare 2    --------------O---------O---O---
+ * Hihat      O---O---O---O---O---O---O---O---
+ */
 static const uint16_t mp7_pattern_rock4_notes[MP7_PATTERN_HALF_STEPS] = {
-    0x0105, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
-    0x0106, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0004, 0x0000,
-    0x0105, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
-    0x0107, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0004, 0x0000,
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
+    0x0102, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0004, 0x0000,
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0100, 0x0000, 0x0000, 0x0000,
+    0x0106, 0x0000, 0x0000, 0x0000, 0x0105, 0x0000, 0x0000, 0x0000,
 };
 
+/* March 6/8 - 2/4, triplet, 32-column stored period
+ * Enable     OOOOOO..OOOOOO..OOOOOO..OOOOOO..
+ * Bass       O-----..O-----..O-----..O-----..
+ * Cymbal 2   O---O-..O---O-..O---O-..O---O-..
+ */
 static const uint16_t mp7_pattern_march68_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0801, 0x0000, 0x0000, 0x0000, 0x0800, 0x0000, 0x0000, 0x0000,
     0x0801, 0x0000, 0x0000, 0x0000, 0x0800, 0x0000, 0x0000, 0x0000,
@@ -450,11 +570,17 @@ static const uint16_t mp7_pattern_march68_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0801, 0x0000, 0x0000, 0x0000, 0x0800, 0x0000, 0x0000, 0x0000,
 };
 
+/* Latin Swing - 4/4, straight, 32-column stored period
+ * Bass       O---------------O-------O-------
+ * Sm Bongo   --------O-----------------------
+ * Conga      ------------------------O-----O-
+ * Cymbal 2   O-------O-----O-O-------O-----O-
+ */
 static const uint16_t mp7_pattern_latinswing_notes[MP7_PATTERN_HALF_STEPS] = {
-    0x0021, 0x0020, 0x0020, 0x0020, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0820, 0x0000, 0x0000, 0x0000, 0x0020, 0x0000, 0x0000, 0x0000,
-    0x0021, 0x0020, 0x0020, 0x0020, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0029, 0x0000, 0x0000, 0x0000, 0x0020, 0x0000, 0x0008, 0x0000,
+    0x0801, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0808, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0800, 0x0000,
+    0x0801, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+    0x0821, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0820, 0x0000,
 };
 
 const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT] = {
@@ -463,7 +589,7 @@ const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT] = {
     { mp7_pattern_mambo_notes, MP7_TIMESIG_4_4, 32, false }, /* Mambo */
     { mp7_pattern_rumba_notes, MP7_TIMESIG_4_4, 64, false }, /* Rumba */
     { mp7_pattern_tango_notes, MP7_TIMESIG_4_4, 32, false }, /* Tango */
-    { mp7_pattern_bossanova_notes, MP7_TIMESIG_4_4, 32, false }, /* Bossanova */
+    { mp7_pattern_bossanova_notes, MP7_TIMESIG_4_4, 64, false }, /* Bossanova */
     { mp7_pattern_rock1_notes, MP7_TIMESIG_4_4, 32, false }, /* Rock 1 */
     { mp7_pattern_rock3_notes, MP7_TIMESIG_4_4, 32, false }, /* Rock 3 */
     { mp7_pattern_march24_notes, MP7_TIMESIG_2_4, 32, true }, /* March 2/4 */
