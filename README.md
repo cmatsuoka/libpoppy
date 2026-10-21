@@ -2,7 +2,7 @@
 
 A small (just a few dozen kilobytes), lightweight, target-agnostic **C,
 integer-only, 32-bit fixed-point** audio library that implements the 15 voices
-of a vintage drum machine and its the 20 built-in rhythm patterns.
+of a well-known vintage drum machine and its 20 built-in rhythm patterns.
 
 The library renders a single stereo mix into a caller-supplied buffer. It does
 no allocation, no I/O and no floating point.
@@ -67,12 +67,12 @@ mp7_set_tempo(ctx, 120);
 
 /* Bank A, Waltz + Samba buttons latched. */
 mp7_set_rhythm(ctx, MP7_BANK_A,
-               mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
-                   mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
+    mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+    mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
 
 /* Switch to bank B button 0 (Jazz Waltz) at the next cycle. */
 mp7_queue_rhythm(ctx, mp7_rhythm_bank(MP7_RHYTHM_JAZZ_WALTZ),
-                 mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ));
+    mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ));
 
 mp7_set_rhythm(ctx, MP7_BANK_A, 0);        /* no buttons: percussion only */
 mp7_trigger_note(ctx, 36, 100);             /* bass drum */
