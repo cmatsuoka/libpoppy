@@ -27,8 +27,8 @@ typedef enum {
     MP7_INSTR_BASS = 0,
     MP7_INSTR_SNARE_1,
     MP7_INSTR_SNARE_2,
-    MP7_INSTR_HI_BONGO,
-    MP7_INSTR_LO_BONGO,
+    MP7_INSTR_SMALL_BONGO,
+    MP7_INSTR_LARGE_BONGO,
     MP7_INSTR_CONGA,
     MP7_INSTR_COWBELL,
     MP7_INSTR_CLAVES,
@@ -140,8 +140,8 @@ void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames);
 void mp7_trigger(mp7_context *ctx, mp7_instr instr, uint8_t velocity);
 
 /* Trigger by MIDI note. The factory note map is fixed (bass drum 36,
- * snare 1 40, snare 2 38, hi bongo 60, lo bongo 61, conga 64, cowbell 56,
- * claves 75, hihat 42, rimshot 37, cymbal 1 49, cymbal 2 57,
+ * snare 1 40, snare 2 38, small bongo 60, large bongo 61, conga 64,
+ * cowbell 56, claves 75, hihat 42, rimshot 37, cymbal 1 49, cymbal 2 57,
  * tambourine 54, guiro 74, quijada 79). A note that is not mapped is
  * ignored. velocity = 0 sends note-off. */
 void mp7_trigger_note(mp7_context *ctx, uint8_t note, uint8_t velocity);

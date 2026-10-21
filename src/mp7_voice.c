@@ -34,9 +34,9 @@ static const struct mp7_voice_config voice_config[MP7_INSTR_COUNT] = {
     { MP7_ENGINE_NOISE,     5500u,    0u,    0u,  800u,  1000u, 400000u,     0u,    0u,  102u,     0, 32768 },
     /* Snare 2 */
     { MP7_ENGINE_NOISE,     5500u,    0u,    0u, 1400u,  1000u,  80000u,     0u,    0u,   77u,     0, 13107 },
-    /* Hi Bongo */
+    /* Small Bongo */
     { MP7_ENGINE_SINE_AD,    600u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u,     0,     0 },
-    /* Lo Bongo */
+    /* Large Bongo */
     { MP7_ENGINE_SINE_AD,    400u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u,     0,     0 },
     /* Conga */
     { MP7_ENGINE_DUAL_TONE,  195u, 4600u,    0u,    0u,  1000u, 250000u,  4000u,    0u,    0u, 65536,     0 },

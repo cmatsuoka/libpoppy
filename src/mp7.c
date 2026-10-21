@@ -159,8 +159,8 @@ static const uint8_t mp7_instr_notes[MP7_INSTR_COUNT] = {
     36u, /* Bass Drum */
     40u, /* Snare 1 */
     38u, /* Snare 2 */
-    60u, /* Hi Bongo */
-    61u, /* Lo Bongo */
+    60u, /* Small Bongo */
+    61u, /* Large Bongo */
     64u, /* Conga */
     56u, /* Cowbell */
     75u, /* Claves */
