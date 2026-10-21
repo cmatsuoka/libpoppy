@@ -1,8 +1,8 @@
 # The Poppy library
 
-A small, target-agnostic **C, integer-only, 32-bit fixed-point** audio library
-that implements the 15 voices of a vintage drum machine and its the 20 built-in
-rhythm patterns.
+A small (just a few dozen kilobytes), lightweight, target-agnostic **C,
+integer-only, 32-bit fixed-point** audio library that implements the 15 voices
+of a vintage drum machine and its the 20 built-in rhythm patterns.
 
 The library renders a single stereo mix into a caller-supplied buffer. It does
 no allocation, no I/O and no floating point.
@@ -14,7 +14,6 @@ Bossa Nova, Rock 1, Rock 3, March 2/4, and Swing. Bank B has Jazz Waltz, Meringu
 Cha-Cha, Beguine, Habanera, Slow Rock, Rock 2, Rock 4, March 6/8 and Latin Swing.
 Patterns in the same bankcan be combined by selecting multiple rhythms at the same
 time.
-
 
 ## Build
 
