@@ -91,12 +91,12 @@ typedef void *mp7_context;
  * that plays on its own when no rhythm button is pressed. The complete
  * pattern of a rhythm is `notes[column] | percussion[column]`.
  *
- * `enable` is 64 bytes, each 0 or 1; disabled columns take no time.
- * `triplet` is true for the shuffle rhythms. */
+ * `enable` is a 64-bit mask, one bit per column; disabled columns take no
+ * time. `triplet` is true for the shuffle rhythms. */
 struct mp7_pattern_view {
     const uint16_t *notes;
     const uint16_t *percussion;
-    const uint8_t *enable;
+    uint64_t enable;
     bool triplet;
 };
 

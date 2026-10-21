@@ -27,7 +27,8 @@ make clean
 Requirements: a C99 compiler and `make`. The library is built with
 `-std=c99 -Wall -Wextra -Werror`; the build also enables
 `-Wfloat-conversion -Wdouble-promotion` when the compiler supports them, so a
-floating-point operation in the library is a build error.
+floating-point operation in the library is a build error. Unwind tables are
+disabled where the compiler supports the flags.
 
 ## Using it
 

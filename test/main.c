@@ -588,12 +588,12 @@ static int command_guiro(void)
 
 static int pattern_enabled_count(unsigned int rhythm)
 {
-    const struct mp7_factory_rhythm *pattern = &mp7_factory_rhythms[rhythm];
+    uint64_t enable = mp7_factory_rhythms[rhythm].enable;
     int count = 0;
     unsigned int column;
 
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        if (pattern->enable[column] != 0u) {
+        if ((enable & ((uint64_t)1u << column)) != 0u) {
             count++;
         }
     }
@@ -602,16 +602,7 @@ static int pattern_enabled_count(unsigned int rhythm)
 
 static uint64_t pattern_enable_mask(unsigned int rhythm)
 {
-    const struct mp7_factory_rhythm *pattern = &mp7_factory_rhythms[rhythm];
-    uint64_t mask = 0;
-    unsigned int column;
-
-    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        if (pattern->enable[column] != 0u) {
-            mask |= (uint64_t)1u << column;
-        }
-    }
-    return mask;
+    return mp7_factory_rhythms[rhythm].enable;
 }
 
 static int command_pattern(void)
@@ -664,6 +655,15 @@ static int command_pattern(void)
                 break;
             }
         }
+    }
+
+    /* Check the enable masks by position, not just by their popcount. */
+    if ((mp7_factory_rhythms[MP7_RHYTHM_WALTZ].enable !=
+         UINT64_C(0xFFF0F0FFFFF0F0FF)) ||
+        (mp7_factory_rhythms[MP7_RHYTHM_MARCH_2_4].enable !=
+         UINT64_C(0x3F3F3F3F3F3F3F3F)) ||
+        (mp7_factory_rhythms[MP7_RHYTHM_SAMBA].enable != ~(uint64_t)0)) {
+        fail("the time-signature enable masks are wrong");
     }
 
     if (failures == 0) {

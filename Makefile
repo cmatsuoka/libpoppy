@@ -23,8 +23,14 @@ CFLAGS   ?=
 FLOAT_WARN := $(shell $(CC) -Wfloat-conversion -Wdouble-promotion -Werror \
 	-E -x c /dev/null >/dev/null 2>&1 && echo "-Wfloat-conversion -Wdouble-promotion")
 
-LIB_CFLAGS  := $(CSTD) $(WARN) $(OPT) $(FLOAT_WARN) $(INCLUDES) $(CFLAGS) -MMD -MP
-TEST_CFLAGS := $(CSTD) $(WARN) $(OPT) $(INCLUDES) $(CFLAGS) -MMD -MP
+# The library is plain C with no exceptions or backtraces. Drop the unwind
+# tables unless the compiler does not know the flags.
+NO_UNWIND := $(shell $(CC) -fno-asynchronous-unwind-tables -fno-unwind-tables \
+	-Werror -E -x c /dev/null >/dev/null 2>&1 && \
+	echo "-fno-asynchronous-unwind-tables -fno-unwind-tables")
+
+LIB_CFLAGS  := $(CSTD) $(WARN) $(OPT) $(FLOAT_WARN) $(NO_UNWIND) $(INCLUDES) $(CFLAGS) -MMD -MP
+TEST_CFLAGS := $(CSTD) $(WARN) $(OPT) $(NO_UNWIND) $(INCLUDES) $(CFLAGS) -MMD -MP
 
 BUILD := build
 

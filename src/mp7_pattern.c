@@ -177,11 +177,9 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
         pattern = &mp7_factory_rhythms[rhythm];
 
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if (pattern->enable[column] == 0u) {
-                enable &= ~((uint64_t)1u << column);
-            }
             seq->notes[column] |= pattern->notes[column];
         }
+        enable &= pattern->enable;
 
         triplet |= pattern->triplet;
     }

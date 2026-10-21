@@ -278,28 +278,13 @@ const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
  * together.
  *
  * The three distinct step-enable masks are defined once and shared by
- * every rhythm that uses them. The note grids are named after the
- * rhythm they belong to.
+ * every rhythm that uses them. Bit c is column c; the note grids are named
+ * after the rhythm they belong to.
  */
 
-static const uint8_t mp7_enable_all[MP7_PATTERN_STEPS] = {
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-};
-static const uint8_t mp7_enable_waltz[MP7_PATTERN_STEPS] = {
-    1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1,
-    0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1,
-    0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-};
-static const uint8_t mp7_enable_march[MP7_PATTERN_STEPS] = {
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0,
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0,
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0,
-    1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0
-};
+#define MP7_TIMESIG_4_4 UINT64_C(0xFFFFFFFFFFFFFFFF)
+#define MP7_TIMESIG_3_4 UINT64_C(0xFFF0F0FFFFF0F0FF)
+#define MP7_TIMESIG_2_4 UINT64_C(0x3F3F3F3F3F3F3F3F)
 
 /* The Tambourine, Guiro and Quijada layer. It is the same in every
  * factory rhythm and it is what plays when no rhythm button is pressed. */
@@ -535,25 +520,25 @@ static const uint16_t mp7_pattern_latinswing_notes[MP7_PATTERN_STEPS] = {
 };
 
 const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT] = {
-    { mp7_pattern_waltz_notes, mp7_enable_waltz, false }, /* Waltz */
-    { mp7_pattern_samba_notes, mp7_enable_all, false }, /* Samba */
-    { mp7_pattern_mambo_notes, mp7_enable_all, false }, /* Mambo */
-    { mp7_pattern_rumba_notes, mp7_enable_all, false }, /* Rumba */
-    { mp7_pattern_tango_notes, mp7_enable_all, false }, /* Tango */
-    { mp7_pattern_bossanova_notes, mp7_enable_all, false }, /* Bossanova */
-    { mp7_pattern_rock1_notes, mp7_enable_all, false }, /* Rock 1 */
-    { mp7_pattern_rock3_notes, mp7_enable_all, false }, /* Rock 3 */
-    { mp7_pattern_march24_notes, mp7_enable_march, true }, /* March 2/4 */
-    { mp7_pattern_swing_notes, mp7_enable_all, false }, /* Swing */
-    { mp7_pattern_jazzwaltz_notes, mp7_enable_waltz, false }, /* Jazz Waltz */
-    { mp7_pattern_meringue_notes, mp7_enable_all, false }, /* Meringue */
-    { mp7_pattern_chacha_notes, mp7_enable_all, false }, /* Cha-Cha */
-    { mp7_pattern_beguine_notes, mp7_enable_all, false }, /* Beguine */
-    { mp7_pattern_habanera_notes, mp7_enable_all, false }, /* Habanera */
-    { mp7_pattern_slowrock_notes, mp7_enable_march, true }, /* Slow Rock */
-    { mp7_pattern_rock2_notes, mp7_enable_all, false }, /* Rock 2 */
-    { mp7_pattern_rock4_notes, mp7_enable_all, false }, /* Rock 4 */
-    { mp7_pattern_march68_notes, mp7_enable_march, true }, /* March 6/8 */
-    { mp7_pattern_latinswing_notes, mp7_enable_all, false }, /* Latin Swing */
+    { mp7_pattern_waltz_notes, MP7_TIMESIG_3_4, false }, /* Waltz */
+    { mp7_pattern_samba_notes, MP7_TIMESIG_4_4, false }, /* Samba */
+    { mp7_pattern_mambo_notes, MP7_TIMESIG_4_4, false }, /* Mambo */
+    { mp7_pattern_rumba_notes, MP7_TIMESIG_4_4, false }, /* Rumba */
+    { mp7_pattern_tango_notes, MP7_TIMESIG_4_4, false }, /* Tango */
+    { mp7_pattern_bossanova_notes, MP7_TIMESIG_4_4, false }, /* Bossanova */
+    { mp7_pattern_rock1_notes, MP7_TIMESIG_4_4, false }, /* Rock 1 */
+    { mp7_pattern_rock3_notes, MP7_TIMESIG_4_4, false }, /* Rock 3 */
+    { mp7_pattern_march24_notes, MP7_TIMESIG_2_4, true }, /* March 2/4 */
+    { mp7_pattern_swing_notes, MP7_TIMESIG_4_4, false }, /* Swing */
+    { mp7_pattern_jazzwaltz_notes, MP7_TIMESIG_3_4, false }, /* Jazz Waltz */
+    { mp7_pattern_meringue_notes, MP7_TIMESIG_4_4, false }, /* Meringue */
+    { mp7_pattern_chacha_notes, MP7_TIMESIG_4_4, false }, /* Cha-Cha */
+    { mp7_pattern_beguine_notes, MP7_TIMESIG_4_4, false }, /* Beguine */
+    { mp7_pattern_habanera_notes, MP7_TIMESIG_4_4, false }, /* Habanera */
+    { mp7_pattern_slowrock_notes, MP7_TIMESIG_2_4, true }, /* Slow Rock */
+    { mp7_pattern_rock2_notes, MP7_TIMESIG_4_4, false }, /* Rock 2 */
+    { mp7_pattern_rock4_notes, MP7_TIMESIG_4_4, false }, /* Rock 4 */
+    { mp7_pattern_march68_notes, MP7_TIMESIG_2_4, true }, /* March 6/8 */
+    { mp7_pattern_latinswing_notes, MP7_TIMESIG_4_4, false }, /* Latin Swing */
 };
 

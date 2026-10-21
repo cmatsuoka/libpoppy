@@ -34,7 +34,8 @@
 #define POPPY_SOFTCLIP_TABLE_SIZE 256
 
 /* A factory rhythm is a note grid plus a step-enable mask and a triplet flag.
- * Columns that are disabled in the combined mask take no time at all.
+ * The enable mask is a 64-bit word, one bit per column; columns that are
+ * disabled in the combined mask take no time at all.
  *
  * A column of the note grid is a 16-bit instrument mask: bit n is set when
  * instrument n (mp7_instr order) plays in that column, so bit 0 is the Bass
@@ -58,7 +59,7 @@
 
 struct mp7_factory_rhythm {
     const uint16_t *notes; /* 64 columns, bit n = instrument n plays */
-    const uint8_t *enable;  /* 64 bytes, 0 or 1 */
+    uint64_t enable;        /* bit c = column c is enabled */
     uint8_t triplet;
 };
 
