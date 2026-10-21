@@ -54,9 +54,9 @@ static void ok(const char *what)
     printf("ok  : %s\n", what);
 }
 
-static mp7_context *context_new(void)
+static struct mp7_context_s *context_new(void)
 {
-    mp7_context *ctx = (mp7_context *)malloc(mp7_context_size());
+    struct mp7_context_s *ctx = (struct mp7_context_s *)malloc(mp7_context_size());
 
     if (ctx == 0) {
         printf("FAIL: out of memory\n");
@@ -67,7 +67,7 @@ static mp7_context *context_new(void)
 
 static int command_init(void)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
 
     printf("context size        : %lu bytes\n", (unsigned long)mp7_context_size());
     printf("default sample rate : %u Hz\n", (unsigned)MP7_DEFAULT_SAMPLE_RATE);
@@ -102,7 +102,7 @@ static int command_init(void)
 
 static int command_sine(void)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     unsigned int i;
     int mismatches = 0;
     int worst = 0;
@@ -228,7 +228,7 @@ static int command_gain(void)
 
 static int command_silence(const char *path)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     size_t frames = (size_t)((TEST_SILENCE_SECONDS * (double)sample_rate) + 0.5);
     int16_t *buffer = (int16_t *)malloc(frames * 2u * sizeof(int16_t));
@@ -272,7 +272,7 @@ static int command_silence(const char *path)
 }
 
 
-static void render_voice_i32(mp7_context *ctx,
+static void render_voice_i32(struct mp7_context_s *ctx,
                              mp7_instr instr,
                              int32_t *out,
                              size_t frames,
@@ -329,7 +329,7 @@ static int command_instruments(const char *dir)
         MP7_INSTR_RIMSHOT, MP7_INSTR_CYMBAL_1, MP7_INSTR_CYMBAL_2,
         MP7_INSTR_TAMBOURINE, MP7_INSTR_GUIRO, MP7_INSTR_QUIJADA
     };
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     const size_t frames = (size_t)sample_rate;
     const size_t tail_frames = (size_t)(sample_rate / 20u);
@@ -434,7 +434,7 @@ static int command_noise(void)
         MP7_INSTR_SNARE_1, MP7_INSTR_SNARE_2, MP7_INSTR_HIHAT,
         MP7_INSTR_CYMBAL_1, MP7_INSTR_CYMBAL_2, MP7_INSTR_TAMBOURINE
     };
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const size_t frames = 8192;
     int32_t *samples = (int32_t *)malloc(6u * frames * sizeof(int32_t));
     unsigned int i;
@@ -502,7 +502,7 @@ static int command_noise(void)
 
 static int command_guiro(void)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     const size_t frames = (size_t)(sample_rate / 2u);
     const size_t late = (size_t)(sample_rate / 10u);
@@ -575,7 +575,7 @@ static int command_pattern(void)
 {
     static const unsigned int short_loop[5] = { 0u, 8u, 10u, 15u, 18u };
     static const unsigned int triplet_rhythms[3] = { 8u, 15u, 18u };
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     unsigned int rhythm;
     unsigned int i;
@@ -838,7 +838,7 @@ static int command_pattern(void)
     return failures == 0 ? 0 : 1;
 }
 
-static int render_rhythm(mp7_context *ctx,
+static int render_rhythm(struct mp7_context_s *ctx,
                          uint32_t selection,
                          int16_t *stereo,
                          size_t *frames_out)
@@ -866,7 +866,7 @@ static int render_rhythm(mp7_context *ctx,
 
 static int command_rhythms(const char *dir)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     size_t max_frames = (size_t)(sample_rate * 4u);
     int16_t *stereo = (int16_t *)malloc(max_frames * 2u * sizeof(int16_t));
@@ -953,7 +953,7 @@ static int command_rhythms(const char *dir)
 
 static int command_quijada(void)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     struct poppy_osc body_expected;
     struct poppy_osc clock_expected;
     const int32_t low = POPPY_Q30_ONE / 10;
@@ -1053,7 +1053,7 @@ static int stereo_is_silent(const int16_t *stereo, size_t frames)
     return 1;
 }
 
-static void render_trigger(mp7_context *ctx, mp7_instr instr,
+static void render_trigger(struct mp7_context_s *ctx, mp7_instr instr,
                            int16_t *stereo, size_t frames)
 {
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
@@ -1063,7 +1063,7 @@ static void render_trigger(mp7_context *ctx, mp7_instr instr,
 
 static int command_mixer(void)
 {
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     const size_t frames = 4096u;
     int16_t *stereo = (int16_t *)malloc(frames * 2u * sizeof(int16_t));
     int16_t *other = (int16_t *)malloc(frames * 2u * sizeof(int16_t));
@@ -1384,7 +1384,7 @@ static int command_api(void)
         36u, 40u, 38u, 60u, 61u, 64u, 56u, 75u,
         42u, 37u, 49u, 57u, 54u, 74u, 79u
     };
-    mp7_context *ctx = context_new();
+    struct mp7_context_s *ctx = context_new();
     unsigned int i;
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
@@ -1400,7 +1400,7 @@ static int command_api(void)
     }
 
     {
-        mp7_pattern_view view;
+        struct mp7_pattern_view view;
         int bad = 0;
 
         for (i = 0u; i < (unsigned int)MP7_RHYTHM_COUNT; i++) {
@@ -1889,8 +1889,8 @@ static int command_api(void)
 
 static int command_panel(void)
 {
-    mp7_context *ctx = context_new();
-    mp7_panel_state state;
+    struct mp7_context_s *ctx = context_new();
+    struct mp7_panel_state state;
     unsigned int guard;
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);

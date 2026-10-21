@@ -7,7 +7,7 @@
  *      the PRNG, the biquads, the soft-clip LUT, the mixer core). These must
  *      stay free of the mp7_ prefix so a future variant can link them; they
  *      are named poppy_*.
- *   2. The per-variant state of this instrument: mp7_context and the tables
+ *   2. The per-variant state of this instrument: the context and the tables
  *      that describe its voices and rhythms.
  *
  * The file name keeps the mp7_ prefix because the tree holds one variant

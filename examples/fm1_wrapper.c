@@ -25,12 +25,12 @@
 /* Full-scale position of a 10-bit encoder or ADC reading. */
 #define FM1_POSITION_MAX 1023u
 
-static mp7_context *fm1_context;
+static mp7_context fm1_context;
 static int16_t *fm1_half_buffer;
 
 void fm1_audio_init(void *context_memory, int16_t *half_buffer, uint32_t sample_rate)
 {
-    fm1_context = (mp7_context *)context_memory;
+    fm1_context = context_memory;
     fm1_half_buffer = half_buffer;
 
     mp7_init(fm1_context, sample_rate);

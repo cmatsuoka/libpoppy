@@ -32,81 +32,85 @@ size_t mp7_context_size(void)
     return sizeof(struct mp7_context_s);
 }
 
-void mp7_init(mp7_context *ctx, uint32_t sample_rate)
+void mp7_init(mp7_context ctx, uint32_t sample_rate)
 {
-    if (ctx == 0) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (c == 0) {
         return;
     }
 
-    memset(ctx, 0, sizeof(*ctx));
+    memset(c, 0, sizeof(*c));
 
     if (sample_rate == 0u) {
         sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     }
-    ctx->sample_rate = sample_rate;
+    c->sample_rate = sample_rate;
 
-    ctx->magic = MP7_CONTEXT_MAGIC;
-    mp7_voice_init_all(ctx);
-    mp7_pattern_init(ctx);
-    poppy_mixer_init(&ctx->mixer);
+    c->magic = MP7_CONTEXT_MAGIC;
+    mp7_voice_init_all(c);
+    mp7_pattern_init(c);
+    poppy_mixer_init(&c->mixer);
 }
 
-void mp7_set_sample_rate(mp7_context *ctx, uint32_t sample_rate)
+void mp7_set_sample_rate(mp7_context ctx, uint32_t sample_rate)
 {
-    if (ctx == 0) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (c == 0) {
         return;
     }
 
     if (sample_rate == 0u) {
         sample_rate = MP7_DEFAULT_SAMPLE_RATE;
     }
-    ctx->sample_rate = sample_rate;
-    mp7_voice_init_all(ctx);
+    c->sample_rate = sample_rate;
+    mp7_voice_init_all(c);
 
     /* The voices were re-initialized, so no gate is open any more. */
-    ctx->guiro_manual_gated = 0u;
-    ctx->guiro_open = 0u;
+    c->guiro_manual_gated = 0u;
+    c->guiro_open = 0u;
 
     /* Keep the selected rhythms and tempo, but rebuild the timing and start
      * the current pattern from its first enabled column at the new rate. */
-    mp7_pattern_set_tempo(ctx, ctx->sequencer.tempo);
-    mp7_pattern_reset(ctx);
+    mp7_pattern_set_tempo(c, c->sequencer.tempo);
+    mp7_pattern_reset(c);
 }
 
-void mp7_reset(mp7_context *ctx)
+void mp7_reset(mp7_context ctx)
 {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     uint32_t sample_rate;
 
-    if (ctx == 0) {
+    if (c == 0) {
         return;
     }
 
     /* Keep the sample rate, drop everything else back to the defaults. */
-    sample_rate = ctx->sample_rate;
+    sample_rate = c->sample_rate;
     mp7_init(ctx, sample_rate);
 }
 
 /* Effective per-voice gain: its fixed Level, scaled by Balance or by the
  * direct-percussion gain when the voice belongs to one of those controls. */
-static int32_t voice_gain_q16(const struct mp7_context_s *ctx,
+static int32_t voice_gain_q16(const struct mp7_context_s *c,
                               const struct mp7_voice *voice)
 {
     int32_t gain = voice->level_q16;
 
     gain = poppy_mul_q16(gain,
-                         poppy_mixer_balance_gain_q16(&ctx->mixer,
+                         poppy_mixer_balance_gain_q16(&c->mixer,
                                                       voice->balance_group));
 
     if (voice->direct_gain_index != MP7_DIRECT_INDEX_NONE) {
         gain = poppy_mul_q16(gain,
-                             ctx->mixer.direct_gain_q16[voice->direct_gain_index]);
+                             c->mixer.direct_gain_q16[voice->direct_gain_index]);
     }
 
     return gain;
 }
 
-void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
+void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
 {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     int32_t voice_gain[MP7_INSTR_COUNT];
     size_t frame;
     unsigned int instr;
@@ -115,7 +119,7 @@ void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
         return;
     }
 
-    if (ctx == 0) {
+    if (c == 0) {
         clear_stereo(stereo_out, frames);
         return;
     }
@@ -124,7 +128,7 @@ void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
      * and a control cannot change while a block is being rendered, so the
      * gain is computed once per block instead of once per sample. */
     for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-        voice_gain[instr] = voice_gain_q16(ctx, &ctx->voices[instr]);
+        voice_gain[instr] = voice_gain_q16(c, &c->voices[instr]);
     }
 
     for (frame = 0u; frame < frames; frame++) {
@@ -133,11 +137,11 @@ void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
 
         /* Triggers are evaluated before the sample is rendered, so hits are
          * sample-accurate. */
-        mp7_pattern_tick(ctx);
+        mp7_pattern_tick(c);
 
         for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-            const struct mp7_voice *voice = &ctx->voices[instr];
-            int64_t sample = mp7_voice_process(&ctx->voices[instr]);
+            const struct mp7_voice *voice = &c->voices[instr];
+            int64_t sample = mp7_voice_process(&c->voices[instr]);
 
             if (sample == 0) {
                 continue;
@@ -148,9 +152,9 @@ void mp7_process(mp7_context *ctx, int16_t *stereo_out, size_t frames)
             sum_right += poppy_mixer_pan_right(sample, voice->pan_q16);
         }
 
-        stereo_out[2u * frame] = poppy_mixer_to_q15(sum_left, ctx->mixer.panel_volume_q16);
+        stereo_out[2u * frame] = poppy_mixer_to_q15(sum_left, c->mixer.panel_volume_q16);
         stereo_out[2u * frame + 1u] = poppy_mixer_to_q15(sum_right,
-                                                         ctx->mixer.panel_volume_q16);
+                                                         c->mixer.panel_volume_q16);
     }
 }
 
@@ -173,38 +177,40 @@ static const uint8_t mp7_instr_notes[MP7_INSTR_COUNT] = {
     79u  /* Quijada */
 };
 
-static int context_valid(const mp7_context *ctx)
+static int context_valid(const struct mp7_context_s *c)
 {
-    return (ctx != 0) && (ctx->magic == MP7_CONTEXT_MAGIC);
+    return (c != 0) && (c->magic == MP7_CONTEXT_MAGIC);
 }
 
-void mp7_trigger(mp7_context *ctx, mp7_instr instr, uint8_t velocity)
+void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity)
 {
-    if (!context_valid(ctx) || ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT)) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (!context_valid(c) || ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT)) {
         return;
     }
 
     if (instr == MP7_INSTR_GUIRO) {
         /* The Guiro is the gated voice: a note the caller triggers holds the
          * same gate the sequencer uses, so the two never fight over it. */
-        mp7_guiro_gate(ctx, ctx->sequencer.guiro_gated,
+        mp7_guiro_gate(c, c->sequencer.guiro_gated,
                        (uint8_t)(velocity != 0u));
         return;
     }
 
     if (velocity == 0u) {
-        mp7_voice_release(&ctx->voices[instr]);
+        mp7_voice_release(&c->voices[instr]);
         return;
     }
 
-    mp7_voice_trigger(&ctx->voices[instr]);
+    mp7_voice_trigger(&c->voices[instr]);
 }
 
-void mp7_trigger_note(mp7_context *ctx, uint8_t note, uint8_t velocity)
+void mp7_trigger_note(mp7_context ctx, uint8_t note, uint8_t velocity)
 {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     unsigned int instr;
 
-    if (!context_valid(ctx)) {
+    if (!context_valid(c)) {
         return;
     }
 
@@ -224,39 +230,41 @@ static uint32_t rhythm_selection(mp7_bank bank, uint16_t buttons)
     return (bank == MP7_BANK_B) ? (button_mask << 10) : button_mask;
 }
 
-void mp7_set_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
+void mp7_set_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
 {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
     uint32_t selected;
     int was_running;
 
-    if (!context_valid(ctx)) {
+    if (!context_valid(c)) {
         return;
     }
 
     bank = (bank == MP7_BANK_B) ? MP7_BANK_B : MP7_BANK_A;
     selected = rhythm_selection(bank, button_mask);
-    was_running = (ctx->sequencer.running != 0u);
+    was_running = (c->sequencer.running != 0u);
 
-    ctx->sequencer.running = 1u;
-    ctx->sequencer.bank = (uint8_t)bank;
-    ctx->sequencer.buttons = button_mask;
-    ctx->sequencer.pending_bank = (uint8_t)bank;
-    ctx->sequencer.pending_buttons = button_mask;
-    ctx->sequencer.pending_selected = selected;
-    ctx->sequencer.pending_valid = 0u;
+    c->sequencer.running = 1u;
+    c->sequencer.bank = (uint8_t)bank;
+    c->sequencer.buttons = button_mask;
+    c->sequencer.pending_bank = (uint8_t)bank;
+    c->sequencer.pending_buttons = button_mask;
+    c->sequencer.pending_selected = selected;
+    c->sequencer.pending_valid = 0u;
 
-    if ((selected != ctx->sequencer.selected) || !was_running) {
-        mp7_pattern_combine(ctx, selected);
+    if ((selected != c->sequencer.selected) || !was_running) {
+        mp7_pattern_combine(c, selected);
     }
 }
 
-void mp7_queue_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
+void mp7_queue_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
 {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
     uint32_t selected;
 
-    if (!context_valid(ctx)) {
+    if (!context_valid(c)) {
         return;
     }
 
@@ -264,102 +272,110 @@ void mp7_queue_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
     selected = rhythm_selection(bank, button_mask);
 
     /* There is no current cycle to finish when the sequencer is stopped. */
-    if (ctx->sequencer.running == 0u) {
+    if (c->sequencer.running == 0u) {
         mp7_set_rhythm(ctx, bank, button_mask);
         return;
     }
 
-    ctx->sequencer.pending_selected = selected;
-    ctx->sequencer.pending_bank = (uint8_t)bank;
-    ctx->sequencer.pending_buttons = button_mask;
+    c->sequencer.pending_selected = selected;
+    c->sequencer.pending_bank = (uint8_t)bank;
+    c->sequencer.pending_buttons = button_mask;
 
     /* A change is pending when the rhythm mask or the panel indication
      * changes. The two are not the same thing: the no-button layer is the
      * same on both banks, so a lever change alone would not show up in the
      * mask, yet the bank lamp still has to follow it. */
-    ctx->sequencer.pending_valid =
-        ((selected != ctx->sequencer.selected) ||
-         ((uint8_t)bank != ctx->sequencer.bank) ||
-         (button_mask != ctx->sequencer.buttons)) ? 1u : 0u;
+    c->sequencer.pending_valid =
+        ((selected != c->sequencer.selected) ||
+         ((uint8_t)bank != c->sequencer.bank) ||
+         (button_mask != c->sequencer.buttons)) ? 1u : 0u;
 }
 
-void mp7_stop_rhythms(mp7_context *ctx)
+void mp7_stop_rhythms(mp7_context ctx)
 {
-    if (!context_valid(ctx)) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (!context_valid(c)) {
         return;
     }
 
-    ctx->sequencer.running = 0u;
-    ctx->sequencer.selected = 0u;
-    ctx->sequencer.pending_selected = 0u;
-    ctx->sequencer.pending_bank = ctx->sequencer.bank;
-    ctx->sequencer.pending_buttons = ctx->sequencer.buttons;
-    ctx->sequencer.pending_valid = 0u;
+    c->sequencer.running = 0u;
+    c->sequencer.selected = 0u;
+    c->sequencer.pending_selected = 0u;
+    c->sequencer.pending_bank = c->sequencer.bank;
+    c->sequencer.pending_buttons = c->sequencer.buttons;
+    c->sequencer.pending_valid = 0u;
 
-    mp7_pattern_combine(ctx, 0u);
-    mp7_pattern_reset(ctx);
+    mp7_pattern_combine(c, 0u);
+    mp7_pattern_reset(c);
 }
 
-void mp7_set_tempo(mp7_context *ctx, uint16_t bpm)
+void mp7_set_tempo(mp7_context ctx, uint16_t bpm)
 {
-    if (!context_valid(ctx)) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (!context_valid(c)) {
         return;
     }
 
-    mp7_pattern_set_tempo(ctx, (uint32_t)bpm);
+    mp7_pattern_set_tempo(c, (uint32_t)bpm);
 }
 
-bool mp7_rhythm_running(const mp7_context *ctx)
+bool mp7_rhythm_running(const void *ctx)
 {
-    return context_valid(ctx) && (ctx->sequencer.running != 0u);
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
+    return context_valid(c) && (c->sequencer.running != 0u);
 }
 
-void mp7_get_panel_state(const mp7_context *ctx, mp7_panel_state *out)
+void mp7_get_panel_state(const void *ctx,
+                         struct mp7_panel_state *out)
 {
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
     if (out == 0) {
         return;
     }
 
-    if (!context_valid(ctx)) {
+    if (!context_valid(c)) {
         memset(out, 0, sizeof(*out));
         out->bank = MP7_BANK_A;
         out->pending_bank = MP7_BANK_A;
         return;
     }
 
-    out->bank = (mp7_bank)ctx->sequencer.bank;
-    out->buttons = ctx->sequencer.buttons;
-    out->pending_bank = (mp7_bank)ctx->sequencer.pending_bank;
-    out->pending_buttons = ctx->sequencer.pending_buttons;
-    out->pending = (ctx->sequencer.pending_valid != 0u);
-    out->running = (ctx->sequencer.running != 0u);
-    out->column = ctx->sequencer.column;
-    out->flash_count = ctx->sequencer.flash_count;
+    out->bank = (mp7_bank)c->sequencer.bank;
+    out->buttons = c->sequencer.buttons;
+    out->pending_bank = (mp7_bank)c->sequencer.pending_bank;
+    out->pending_buttons = c->sequencer.pending_buttons;
+    out->pending = (c->sequencer.pending_valid != 0u);
+    out->running = (c->sequencer.running != 0u);
+    out->column = c->sequencer.column;
+    out->flash_count = c->sequencer.flash_count;
 }
 
-void mp7_set_volume(mp7_context *ctx, int32_t volume_q16)
+void mp7_set_volume(mp7_context ctx, int32_t volume_q16)
 {
-    if (!context_valid(ctx)) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (!context_valid(c)) {
         return;
     }
 
-    poppy_mixer_set_volume(&ctx->mixer, volume_q16);
+    poppy_mixer_set_volume(&c->mixer, volume_q16);
 }
 
-void mp7_set_balance(mp7_context *ctx, int32_t balance_q16)
+void mp7_set_balance(mp7_context ctx, int32_t balance_q16)
 {
-    if (!context_valid(ctx)) {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    if (!context_valid(c)) {
         return;
     }
 
-    poppy_mixer_set_balance(&ctx->mixer, balance_q16);
+    poppy_mixer_set_balance(&c->mixer, balance_q16);
 }
 
-void mp7_set_perc_gain(mp7_context *ctx, mp7_instr instr, int32_t gain_q16)
+void mp7_set_perc_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16)
 {
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     unsigned int index;
 
-    if (!context_valid(ctx)) {
+    if (!context_valid(c)) {
         return;
     }
 
@@ -378,10 +394,10 @@ void mp7_set_perc_gain(mp7_context *ctx, mp7_instr instr, int32_t gain_q16)
         return;
     }
 
-    poppy_mixer_set_direct_gain(&ctx->mixer, index, gain_q16);
+    poppy_mixer_set_direct_gain(&c->mixer, index, gain_q16);
 }
 
-void mp7_get_factory_pattern(mp7_rhythm rhythm, mp7_pattern_view *out)
+void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
 {
     const struct mp7_factory_rhythm *pattern;
 

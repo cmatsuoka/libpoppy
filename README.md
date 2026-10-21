@@ -26,7 +26,7 @@ floating-point operation in the library is a build error.
 ```c
 #include <mp7.h>
 
-mp7_context *ctx = malloc(mp7_context_size());
+mp7_context ctx = malloc(mp7_context_size());
 mp7_init(ctx, 44100);
 
 int16_t block[128 * 2];
@@ -68,14 +68,14 @@ mp7_trigger_note(ctx, 74, 0);               /* note-off (Guiro is the gated voic
 The panel state is available for a UI or lamp driver without callbacks:
 
 ```c
-mp7_panel_state state;
+struct mp7_panel_state state;
 mp7_get_panel_state(ctx, &state);
 
 /* stopped: light the lens for state.bank; running: pulse it when
  * state.flash_count advances. */
 ```
 
-`mp7_panel_state` carries the applied bank and button mask, any queued
+`struct mp7_panel_state` carries the applied bank and button mask, any queued
 selection, the transport state, the current grid column and a monotonic lamp
 flash counter. The flash counter advances at the same two grid points as the
 reference unit (the first enabled column at or after column 31, and the cycle
