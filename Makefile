@@ -3,6 +3,7 @@
 # Targets:
 #   all     build libpoppy.a and mp7_test
 #   check   build and run the test harness
+#   play    build the OpenAL rhythm player example
 #   clean   remove the build products
 #
 # The archive is libpoppy.a (-lpoppy) while the API prefix is mp7_/MP7_.
@@ -38,13 +39,17 @@ LIB_SRCS  := $(wildcard src/*.c)
 TEST_SRCS := $(wildcard test/*.c)
 LIB_OBJS  := $(patsubst src/%.c,$(BUILD)/src/%.o,$(LIB_SRCS))
 TEST_OBJS := $(patsubst test/%.c,$(BUILD)/test/%.o,$(TEST_SRCS))
-EXAMPLES := $(wildcard examples/*.c)
+EXAMPLES := $(filter-out examples/play_rhythm.c,$(wildcard examples/*.c))
 EXAMPLE_OBJS := $(patsubst examples/%.c,$(BUILD)/examples/%.o,$(EXAMPLES))
+
+OPENAL_CFLAGS := $(shell pkg-config --cflags openal 2>/dev/null)
+OPENAL_LIBS   := $(shell pkg-config --libs openal 2>/dev/null || echo -lopenal)
 
 LIB  := libpoppy.a
 TEST := mp7_test
+PLAY := $(BUILD)/examples/play_rhythm
 
-.PHONY: all check clean
+.PHONY: all check clean play
 
 all: $(LIB) $(TEST) $(EXAMPLE_OBJS)
 
@@ -67,6 +72,15 @@ $(BUILD)/examples/%.o: examples/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(LIB_CFLAGS) -c -o $@ $<
 
+play: $(PLAY)
+
+$(PLAY): $(BUILD)/examples/play_rhythm.o $(LIB)
+	$(CC) $(TEST_CFLAGS) -o $@ $< -L. -lpoppy $(OPENAL_LIBS)
+
+$(BUILD)/examples/play_rhythm.o: examples/play_rhythm.c
+	@mkdir -p $(dir $@)
+	$(CC) $(LIB_CFLAGS) $(OPENAL_CFLAGS) -c -o $@ $<
+
 check: $(TEST) $(EXAMPLE_OBJS)
 	./$(TEST) --init
 	./$(TEST) --sine
@@ -85,4 +99,5 @@ check: $(TEST) $(EXAMPLE_OBJS)
 clean:
 	rm -rf $(BUILD) $(LIB) $(TEST) silence.wav
 
--include $(LIB_OBJS:.o=.d) $(TEST_OBJS:.o=.d) $(EXAMPLE_OBJS:.o=.d)
+-include $(LIB_OBJS:.o=.d) $(TEST_OBJS:.o=.d) $(EXAMPLE_OBJS:.o=.d) \
+	$(BUILD)/examples/play_rhythm.d

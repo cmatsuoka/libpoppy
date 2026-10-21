@@ -20,7 +20,15 @@ time.
 ```sh
 make            # builds libpoppy.a and mp7_test
 make check      # builds and runs the test harness
+make play       # builds the OpenAL rhythm player example
 make clean
+```
+
+`make play` additionally needs OpenAL (`pkg-config openal`, or `-lopenal`).
+The player is written to `build/examples/play_rhythm`:
+
+```sh
+./build/examples/play_rhythm --tempo 140 --bank B --buttons=1,3
 ```
 
 Requirements: a C99 compiler and `make`. The library is built with
