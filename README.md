@@ -1,12 +1,20 @@
 # The Poppy library
 
 A small, target-agnostic **C, integer-only, 32-bit fixed-point** audio library
-that implements the 15 voices of the Mini Pops percussion unit, their mixer and
-the 20 built-in rhythm patterns.
+that implements the 15 voices of a vintage drum machine and its the 20 built-in
+rhythm patterns.
 
 The library renders a single stereo mix into a caller-supplied buffer. It does
-no allocation, no I/O and no floating point, and it is meant to run on the
-M-VAVE FM-1 (pi32v2) as well as on a desktop.
+no allocation, no I/O and no floating point.
+
+## Available rhythm patterns:
+
+There are two banks of preset rhythms. Bank A contains Waltz, Samba, Mambo, Rumba,
+Bossa Nova, Rock 1, Rock 3, March 2/4, and Swing. Bank B has Jazz Waltz, Meringue,
+Cha-Cha, Beguine, Habanera, Slow Rock, Rock 2, Rock 4, March 6/8 and Latin Swing.
+Patterns in the same bankcan be combined by selecting multiple rhythms at the same
+time.
+
 
 ## Build
 
@@ -39,15 +47,13 @@ selection. Synthesis parameters (frequency, envelope times, filter settings
 and so on) are fixed constants inside the engines. Gains are linear Q16
 values: 1.0 is `65536`.
 
-Rhythm selection mirrors the panel: a bank lever (`MP7_BANK_A` / `MP7_BANK_B`)
-plus a 10-bit mask of the pressed rhythm buttons. Only rhythms in the selected
-bank can be combined. A button mask of 0 means no button is pressed: the main
-rhythms stop but the fixed Tambourine/Guiro/Quijada layer keeps playing, as on
-the original unit. Use `mp7_stop_rhythms()` for Stop.
+Rhythm selection mirrors the panel: a bank A/B switch and a 10-bit mask of
+the pressed rhythm buttons. A button mask of 0 means no button is pressed.
+Use `mp7_stop_rhythms()` to stop the player.
 
 ```c
 mp7_set_volume(ctx, 65536);                 /* panel 1.0 -> 0.5x master gain */
-mp7_set_balance(ctx, 32768);                /* centre */
+mp7_set_balance(ctx, 32768);                /* center */
 mp7_set_perc_gain(ctx, MP7_INSTR_QUIJADA, 65536);
 mp7_set_tempo(ctx, 120);
 
@@ -90,22 +96,3 @@ open does not restart the ratchet.
 The library is not thread-safe: `mp7_process()` and the setters must not run at
 the same time. On the FM-1 the panel glue applies its changes while the audio
 thread is blocked, or from the audio thread itself.
-
-`examples/fm1_wrapper.c` is a small example of the ISR and panel glue for the FM-1.
-
-## Test harness
-
-```sh
-./mp7_test --init             # context size, default sample rate, table size
-./mp7_test --sine             # verify the shared sine table, index by index
-./mp7_test --gain             # verify the Q16 gain multiply, including >unity
-./mp7_test --silence out.wav  # render silence and write a 16-bit stereo WAV
-./mp7_test --instruments dir  # render all 15 instruments to WAV files
-./mp7_test --noise            # verify the noise voices are uncorrelated
-./mp7_test --guiro            # verify Guiro gate hold and note-off release
-./mp7_test --quijada          # verify Quijada frequencies, thresholds and comparator
-./mp7_test --mixer            # verify pan, Volume, Balance and direct gains
-./mp7_test --api              # verify triggers, MIDI map, rhythms, tempo
-./mp7_test --panel            # verify the panel state snapshot and lamp counter
-./mp7_test --pattern          # verify the 20 patterns, combination and timing
-./mp7_test --rhythms dir      # render all 20 rhythms and two combinations
