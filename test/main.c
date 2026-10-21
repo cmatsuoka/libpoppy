@@ -816,7 +816,7 @@ static int command_pattern(void)
         const unsigned int step = ctx->sequencer.sub_step_samples;
         size_t trigger_times[16];
         unsigned int trigger_count = 0;
-        size_t total = (size_t)MP7_PATTERN_STEPS * 2u * step + 1u;
+        size_t total = (size_t)MP7_PATTERN_STEPS * 3u * step + 1u;
         size_t t;
 
         for (t = 0u; t < total; t++) {
@@ -841,7 +841,7 @@ static int command_pattern(void)
                 fail("the first Base hit is not at the first sub-step boundary");
             }
             for (hit = 1u; hit < 9u; hit++) {
-                size_t expected = (size_t)gap_columns[hit - 1u] * 2u * step;
+                size_t expected = (size_t)gap_columns[hit - 1u] * 3u * step;
                 size_t got = trigger_times[hit] - trigger_times[hit - 1u];
 
                 if (got != expected) {
@@ -862,7 +862,7 @@ static int command_pattern(void)
     mp7_pattern_combine(ctx, (uint32_t)1u << MP7_RHYTHM_ROCK_1);
     mp7_pattern_set_tempo(ctx, 120u);
     {
-        const size_t column_samples = 2u * (size_t)ctx->sequencer.sub_step_samples;
+        const size_t column_samples = 3u * (size_t)ctx->sequencer.sub_step_samples;
         size_t t;
 
         mp7_pattern_tick(ctx);
@@ -914,7 +914,7 @@ static int render_rhythm(struct mp7_context_s *ctx,
 
     mp7_pattern_combine(ctx, selection);
     mp7_pattern_set_tempo(ctx, 120u);
-    steps = (ctx->sequencer.triplet != 0u) ? 3u : 2u;
+    steps = (ctx->sequencer.triplet != 0u) ? 4u : 3u;
 
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
         if ((ctx->sequencer.enable & ((uint64_t)1u << column)) != 0u) {
@@ -932,7 +932,7 @@ static int command_rhythms(const char *dir)
 {
     struct mp7_context_s *ctx = context_new();
     const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
-    size_t max_frames = (size_t)(sample_rate * 4u);
+    size_t max_frames = (size_t)(sample_rate * 5u);
     int16_t *stereo = (int16_t *)malloc(max_frames * 2u * sizeof(int16_t));
     unsigned int rhythm;
     unsigned int failures_before = (unsigned int)failures;
@@ -1549,7 +1549,7 @@ static int command_api(void)
     mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_trigger(ctx, MP7_INSTR_GUIRO, 100u);
     {
-        const size_t column_samples = 2u * (size_t)ctx->sequencer.sub_step_samples;
+        const size_t column_samples = 3u * (size_t)ctx->sequencer.sub_step_samples;
         size_t t;
 
         /* The shared Guiro row is XXXX...., so the pattern closes its own
@@ -1677,7 +1677,7 @@ static int command_api(void)
         unsigned int column_index;
         int saw_default_hits = 0;
 
-        for (t = 0u; t < 5u * 2u * 919u + 123u; t++) {
+        for (t = 0u; t < 5u * 3u * 919u + 123u; t++) {
             mp7_pattern_tick(ctx);
         }
         column = ctx->sequencer.column;
@@ -1749,7 +1749,7 @@ static int command_api(void)
     {
         unsigned int t;
 
-        for (t = 0u; t < 10u * 2u * 919u + 300u; t++) {
+        for (t = 0u; t < 10u * 3u * 919u + 300u; t++) {
             mp7_pattern_tick(ctx);
         }
 
@@ -1766,7 +1766,7 @@ static int command_api(void)
             uint8_t previous = ctx->sequencer.column;
             int wrapped = 0;
 
-            for (t = 0u; t < 128u * 2u * 919u; t++) {
+            for (t = 0u; t < 128u * 3u * 919u; t++) {
                 mp7_pattern_tick(ctx);
                 if (ctx->sequencer.column < previous) {
                     wrapped = 1;
@@ -1825,7 +1825,7 @@ static int command_api(void)
     } else {
         unsigned int t;
 
-        for (t = 0u; t < 128u * 2u * 919u; t++) {
+        for (t = 0u; t < 128u * 3u * 919u; t++) {
             uint8_t previous = ctx->sequencer.column;
 
             mp7_pattern_tick(ctx);

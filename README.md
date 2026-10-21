@@ -49,7 +49,7 @@ int16_t block[128 * 2];
 mp7_process(ctx, block, 128);      /* from the audio ISR */
 ```
 
-Only the original unit's panel controls are exposed: master Volume, Balance,
+Only the panel controls are exposed: master Volume, Balance,
 the Quijada/Guiro/Tambourine Additional Volume faders, tempo and rhythm
 selection. Synthesis parameters (frequency, envelope times, filter settings
 and so on) are fixed constants inside the engines. Gains are linear Q16
@@ -91,9 +91,9 @@ mp7_get_panel_state(ctx, &state);
 
 `struct mp7_panel_state` carries the applied bank and button mask, any queued
 selection, the transport state, the current grid column and a monotonic lamp
-flash counter. The flash counter advances at the same two grid points as the
-reference unit (the first enabled column at or after column 31, and the cycle
-wrap). The host owns the visible pulse length; the library supplies the events.
+flash counter. The flash counter advances on two grid points: the first
+enabled column at or after column 31, and the cycle wrap. The host owns the
+visible pulse length; the library supplies the events.
 
 The Guiro is the only gated voice. Its gate is shared between the pattern
 player and the note you trigger yourself: the voice sounds while either one

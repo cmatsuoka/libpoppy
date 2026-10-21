@@ -1,8 +1,8 @@
 /*
  * wav_writer.h - minimal 16-bit stereo WAV writer for testing
  *
- * Not part of the library. The test harness uses it to write rendered
- * reference WAV files.
+ * Not part of the library. The test harness uses it to write rendered WAV
+ * files for listening and comparison.
  */
 
 #ifndef WAV_WRITER_H

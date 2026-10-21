@@ -1,7 +1,7 @@
 /*
  * mp7_voice.c - per-instrument state and fixed parameter constants.
  *
- * The original unit does not expose synthesis parameters to the user, so the
+ * The panel does not expose synthesis parameters to the user, so the
  * values below are compiled in. Frequencies are in Hz, times in microseconds,
  * and resonance in Q8.8. Level and Pan are fixed here as well, but they are
  * mixer inputs rather than synthesis parameters: the mixer applies them

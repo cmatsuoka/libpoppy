@@ -14,7 +14,7 @@
  *
  * Disabled columns take no time: the sequencer only ever visits enabled
  * columns. A column that an immediate rhythm change disables is skipped, not
- * waited out. Each visited column lasts two sub-steps (straight) or three
+ * waited out. Each visited column lasts three sub-steps (straight) or four
  * (triplet), and each sub-step lasts round(2.5 * sample_rate / tempo) samples.
  * Triggers are evaluated before the sample at a sub-step boundary is rendered.
  */
@@ -23,14 +23,17 @@
 
 #include "mp7_internal.h"
 
-#define MP7_SUB_STEPS_STRAIGHT 2u
-#define MP7_SUB_STEPS_TRIPLET 3u
+/* A column lasts three timing intervals when straight and four when triplet,
+ * counting the boundary on which the column starts. A counter that counted
+ * only the gaps between columns would hold one less (2 or 3). */
+#define MP7_SUB_STEPS_STRAIGHT 3u
+#define MP7_SUB_STEPS_TRIPLET 4u
 #define MP7_DEFAULT_TEMPO 120u
 #define MP7_MAX_TEMPO 240u
 
-/* The reference unit flashes the pilot/tempo lamp when the playhead reaches
- * column 31 - its "second 32-column half" test is off by one - and when the
- * playhead wraps. These are grid positions, not a musical meter. */
+/* The pilot/tempo lamp flashes when the playhead crosses column 31 - the
+ * last column of the first 32-column half - and when the playhead wraps.
+ * These are grid positions, not a musical meter. */
 #define MP7_LAMP_HALF_COLUMN 31u
 
 /* Both the rhythm grids and the shared percussion layer may store only a
@@ -139,10 +142,10 @@ void mp7_pattern_set_tempo(struct mp7_context_s *ctx, uint32_t bpm)
     }
 }
 
-/* With no rhythm key pressed the original keeps the three Additional Volume
- * voices running on their fixed layer; the main rhythm instruments are
- * silent. That layer is the shared percussion definition, and it plays on
- * its own, straight, over all 64 columns. */
+/* With no rhythm key pressed the three Additional Volume voices keep running
+ * on their fixed layer; the main rhythm instruments are silent. That layer is
+ * the shared percussion definition, and it plays on its own, straight, over
+ * all 64 columns. */
 static void build_default_percussion(struct mp7_sequencer *seq)
 {
     unsigned int column;
@@ -257,8 +260,8 @@ static int advance_column(struct mp7_context_s *ctx)
     uint8_t previous = seq->column;
     uint8_t next = next_enabled_column(seq, previous);
 
-    /* Match the reference lamp: flash when the playhead crosses column 31,
-     * and when it wraps to the start of the cycle. A single-column grid
+    /* Flash the pilot/tempo lamp when the playhead crosses column 31 and
+     * when it wraps to the start of the cycle. A single-column grid
      * (next == previous) does not flash every step. */
     if (((previous < MP7_LAMP_HALF_COLUMN) &&
          (next >= MP7_LAMP_HALF_COLUMN)) ||

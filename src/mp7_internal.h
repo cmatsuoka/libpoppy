@@ -231,8 +231,8 @@ struct mp7_voice {
  * combined grid: one 16-bit instrument mask per column, bit n set when
  * instrument n plays in that column.
  *
- * The sequencer triggers on sub-step boundaries. A straight column spans two
- * sub-steps and a triplet column spans three; `substep` counts the sub-steps
+ * The sequencer triggers on sub-step boundaries. A straight column spans three
+ * sub-steps and a triplet column spans four; `substep` counts the sub-steps
  * elapsed in the current column. `sub_step_pos` counts down samples to the
  * next boundary and is zero on the sample where the boundary is evaluated.
  *

@@ -51,7 +51,7 @@ void fm1_audio_isr(void)
      * Q15 samples are shifted left by 7 bits by the I2S layer. */
 }
 
-/* Master Volume: the reference's square-root taper, value = 4 * n^2. */
+/* Master Volume: square-root taper, value = 4 * n^2. */
 void fm1_panel_volume(uint16_t position)
 {
     uint32_t p = (position > FM1_POSITION_MAX) ? FM1_POSITION_MAX : position;

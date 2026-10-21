@@ -160,11 +160,11 @@ void mp7_trigger_note(mp7_context ctx, uint8_t note, uint8_t velocity);
  * `bank` is the Rhythm Section Control Lever position. `buttons` is a mask of
  * the ten physical rhythm buttons: bit k is button k (0..9), and bits 10..15
  * are ignored. Several buttons in the same bank are OR-ed together, so a
- * selection can never mix bank A and bank B, just as on the original panel.
+ * selection can never mix bank A and bank B.
  *
  * buttons = 0 means no button is pressed. The sequencer keeps running in that
  * case: the main rhythm instruments fall silent and the fixed
- * Tambourine/Guiro/Quijada layer continues, matching the original unit.
+ * Tambourine/Guiro/Quijada layer continues.
  *
  * The playhead is preserved: the new grid takes effect where the current one
  * is playing, without restarting the pattern. Calling this starts the
@@ -210,12 +210,12 @@ bool mp7_rhythm_running(const void *ctx);
  * applied; they are meaningful only when `pending` is true.
  *
  * `column` is the current grid column, 0..63. `flash_count` is a monotonic
- * count of the lamp flashes produced by the sequencer. It advances at the same
- * two points as the reference unit: when the playhead reaches the first
- * enabled column at or after column 31 - the last column of the first
- * 32-column half - and when the playhead wraps back to the first enabled
- * column. It never decreases, is not reset by mp7_stop_rhythms(), and is
- * reset only by mp7_init()/mp7_reset().
+ * count of the lamp flashes produced by the sequencer. It advances on two
+ * grid points: when the playhead reaches the first enabled column at or
+ * after column 31 - the last column of the first 32-column half - and when
+ * the playhead wraps back to the first enabled column. It never decreases, is
+ * not reset by mp7_stop_rhythms(), and is reset only by
+ * mp7_init()/mp7_reset().
  *
  * The host can drive the two pilot/tempo lamps from this snapshot: light the
  * lamp for `bank` while stopped; while running, pulse that lamp whenever
@@ -241,10 +241,10 @@ void mp7_get_panel_state(const void *ctx,
 /* Global mix controls, mapping the panel's remaining faders.
  *
  * Gains are Q16 units: 1.0 is exactly 65536. The values are linear
- * multipliers; the reference's knob taper is a host-side concern.
+ * multipliers; the knob taper is a host-side concern.
  *
  * Volume is the panel value 0..4 (0..262144). It is not the master gain: the
- * mixer applies the reference's 0.5 factor, so panel 1.0 is a master gain of
+ * mixer applies a fixed 0.5 factor, so panel 1.0 is a master gain of
  * 0.5 and panel 2.0 is unity.
  *
  * Balance is 0..1 (0..65536), default 0.5; it crossfades the Bass Drum
