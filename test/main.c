@@ -41,6 +41,29 @@
 
 #define TEST_SILENCE_SECONDS 0.25
 
+static const char *const test_rhythm_names[MP7_RHYTHM_COUNT] = {
+    "Waltz",
+    "Samba",
+    "Mambo",
+    "Rumba",
+    "Tango",
+    "Bossanova",
+    "Rock 1",
+    "Rock 3",
+    "March 2/4",
+    "Swing",
+    "Jazz Waltz",
+    "Meringue",
+    "Cha-Cha",
+    "Beguine",
+    "Habanera",
+    "Slow Rock",
+    "Rock 2",
+    "Rock 4",
+    "March 6/8",
+    "Latin Swing",
+};
+
 static int failures = 0;
 
 static void fail(const char *what)
@@ -623,12 +646,12 @@ static int command_pattern(void)
         }
 
         if (pattern_enabled_count(rhythm) != (expect_short ? 48 : 64)) {
-            printf("FAIL: %s enables %d columns\n", mp7_rhythm_names[rhythm],
+            printf("FAIL: %s enables %d columns\n", test_rhythm_names[rhythm],
                    pattern_enabled_count(rhythm));
             failures++;
         }
         if ((int)pattern->triplet != expect_triplet) {
-            printf("FAIL: %s triplet flag is %d\n", mp7_rhythm_names[rhythm],
+            printf("FAIL: %s triplet flag is %d\n", test_rhythm_names[rhythm],
                    (int)pattern->triplet);
             failures++;
         }
@@ -636,7 +659,7 @@ static int command_pattern(void)
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
             if ((pattern->notes[column] & (uint16_t)~MP7_PATTERN_RHYTHM_MASK) != 0u) {
                 printf("FAIL: %s column %u is not a rhythm instrument mask\n",
-                       mp7_rhythm_names[rhythm], column);
+                       test_rhythm_names[rhythm], column);
                 failures++;
                 break;
             }
@@ -685,7 +708,7 @@ static int command_pattern(void)
             for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
                 if ((pattern->notes[column] & MP7_PATTERN_PERCUSSION_MASK) != 0u) {
                     printf("FAIL: %s carries the shared percussion itself\n",
-                           mp7_rhythm_names[rhythm]);
+                           test_rhythm_names[rhythm]);
                     failures++;
                     break;
                 }
@@ -916,7 +939,7 @@ static int command_rhythms(const char *dir)
             }
         }
         if (peak < 100) {
-            printf("FAIL: %s rendered silence\n", mp7_rhythm_names[rhythm]);
+            printf("FAIL: %s rendered silence\n", test_rhythm_names[rhythm]);
             failures++;
         }
         if (snprintf(path, sizeof(path), "%s/rhythm_%02u.wav", dir, rhythm) >=
@@ -1409,16 +1432,7 @@ static int command_api(void)
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
 
-    /* Names and factory-pattern access. */
-    if ((strcmp(mp7_instr_name(MP7_INSTR_QUIJADA), "Quijada") != 0) ||
-        (strcmp(mp7_rhythm_name(MP7_RHYTHM_LATIN_SWING), "Latin Swing") != 0) ||
-        (strcmp(mp7_instr_name((mp7_instr)MP7_INSTR_COUNT), "?") != 0) ||
-        (strcmp(mp7_rhythm_name((mp7_rhythm)MP7_RHYTHM_COUNT), "?") != 0)) {
-        fail("the name accessors do not return the expected strings");
-    } else {
-        ok("the instrument and rhythm name accessors work");
-    }
-
+    /* Factory-pattern access. */
     {
         struct mp7_pattern_view view;
         int bad = 0;

@@ -422,22 +422,6 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
     out->triplet = (pattern->triplet != 0u);
 }
 
-const char *mp7_instr_name(mp7_instr instr)
-{
-    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
-        return "?";
-    }
-    return mp7_instr_names[instr];
-}
-
-const char *mp7_rhythm_name(mp7_rhythm rhythm)
-{
-    if ((unsigned int)rhythm >= (unsigned int)MP7_RHYTHM_COUNT) {
-        return "?";
-    }
-    return mp7_rhythm_names[rhythm];
-}
-
 mp7_bank mp7_rhythm_bank(mp7_rhythm rhythm)
 {
     if ((unsigned int)rhythm >= (unsigned int)MP7_RHYTHM_COUNT) {

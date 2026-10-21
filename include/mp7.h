@@ -263,10 +263,6 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out);
 mp7_bank mp7_rhythm_bank(mp7_rhythm rhythm);
 uint16_t mp7_rhythm_button_bit(mp7_rhythm rhythm);
 
-/* Human-readable names for display. Return "?" for an invalid index. */
-const char *mp7_instr_name(mp7_instr instr);
-const char *mp7_rhythm_name(mp7_rhythm rhythm);
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

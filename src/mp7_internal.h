@@ -64,8 +64,6 @@ struct mp7_factory_rhythm {
 
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
 extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_STEPS];
-extern const char *const mp7_rhythm_names[MP7_RHYTHM_COUNT];
-extern const char *const mp7_instr_names[MP7_INSTR_COUNT];
 
 /* Marker written into a context by mp7_init(), so that a half-initialized
  * context can be spotted. */
