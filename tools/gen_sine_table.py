@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Generate the sine table used by the Mini Pops library.
+"""Generate the first-quadrant sine table used by the Mini Pops library.
 
-The library keeps the full period of the sine in flash as a single shared
-`const` table:
+The library keeps only the first quadrant of the sine in flash as a single
+shared `const` table:
 
-    s[i] = floor(32767 * sin(2*pi*i/4096) + 0.5)      for i = 0..4095
+    q[i] = floor(32767 * sin(2*pi*i/4096) + 0.5)      for i = 0..1024
 
-The table is `const` and file-scope, so every context, every voice and every
-future variant of the library shares one copy. Nothing is built at init time
-and no context carries a copy of the table.
+Index 0 is the zero crossing, index 1024 the positive peak. The other three
+quadrants are rebuilt at run time from this quadrant by mirroring and
+negation, so the full period is exact without storing it.
 
 The rounding convention is **round-half-up**, i.e. `floor(x + 0.5)`. The C
 harness (`mp7_test --sine`) uses the same convention, so the generator and the
@@ -23,6 +23,7 @@ import math
 import sys
 
 FULL_SIZE = 4096
+QUAD_SIZE = FULL_SIZE // 4 + 1
 Q15_FULL_SCALE = 32767
 
 
@@ -36,12 +37,28 @@ def q15_sine(index: int) -> int:
     return math.floor(exact + 0.5)
 
 
-def full_table() -> list[int]:
-    return [q15_sine(i) for i in range(FULL_SIZE)]
+def quad_table() -> list[int]:
+    return [q15_sine(i) for i in range(QUAD_SIZE)]
 
 
-def check(table: list[int]) -> int:
+def rebuild(quad: list[int]) -> list[int]:
+    """Expand the first quadrant to the full 4096-entry period."""
+    table = [0] * FULL_SIZE
+    for i in range(FULL_SIZE):
+        if i <= FULL_SIZE // 4:
+            table[i] = quad[i]
+        elif i <= FULL_SIZE // 2 - 1:
+            table[i] = quad[FULL_SIZE // 2 - i]
+        elif i <= 3 * FULL_SIZE // 4 - 1:
+            table[i] = -quad[i - FULL_SIZE // 2]
+        else:
+            table[i] = -quad[FULL_SIZE - i]
+    return table
+
+
+def check(quad: list[int]) -> int:
     """Return the number of mismatching entries; print a report to stderr."""
+    table = rebuild(quad)
     bad = 0
     worst = 0
     for i in range(FULL_SIZE):
@@ -56,8 +73,8 @@ def check(table: list[int]) -> int:
                     f"(err {err})",
                     file=sys.stderr,
                 )
-    print(f"table: {len(table)} entries, {len(table) * 2} bytes", file=sys.stderr)
-    print(f"peak  = {table[FULL_SIZE // 4]} (must be 32767)", file=sys.stderr)
+    print(f"table: {len(quad)} entries, {len(quad) * 2} bytes", file=sys.stderr)
+    print(f"peak  = {quad[FULL_SIZE // 4]} (must be 32767)", file=sys.stderr)
     print(
         f"mismatches = {bad}, worst error = {worst}",
         file=sys.stderr,
@@ -65,25 +82,25 @@ def check(table: list[int]) -> int:
     return bad
 
 
-def emit(table: list[int]) -> None:
-    print("const int16_t poppy_sine[POPPY_SINE_TABLE_SIZE] = {")
-    for start in range(0, FULL_SIZE, 8):
-        row = ", ".join(f"{v:6d}" for v in table[start : start + 8])
+def emit(quad: list[int]) -> None:
+    print("const int16_t poppy_sine_quad1[POPPY_SINE_QUAD_SIZE] = {")
+    for start in range(0, QUAD_SIZE, 8):
+        row = ", ".join(f"{v:6d}" for v in quad[start : start + 8])
         print(f"    {row},")
     print("};")
 
 
 def main() -> int:
-    table = full_table()
-    bad = check(table)
+    quad = quad_table()
+    bad = check(quad)
     if bad:
-        print("FAIL: the table does not match sin(2*pi*i/4096)", file=sys.stderr)
+        print("FAIL: the rebuilt table does not match sin(2*pi*i/4096)", file=sys.stderr)
         return 1
-    if table[FULL_SIZE // 4] != Q15_FULL_SCALE:
+    if quad[FULL_SIZE // 4] != Q15_FULL_SCALE:
         print("FAIL: the peak is not exactly 32767", file=sys.stderr)
         return 1
     if "--check" not in sys.argv:
-        emit(table)
+        emit(quad)
     return 0
 
 

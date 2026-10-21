@@ -25,6 +25,11 @@
 /* Full sine period, one entry per sample of a 4096-step cycle. */
 #define POPPY_SINE_TABLE_SIZE 4096
 
+/* First quadrant including both endpoints, i.e. the zero crossing at index 0
+ * and the peak at index 1024. The other quadrants are mirrored and negated
+ * from this table. */
+#define POPPY_SINE_QUAD_SIZE 1025
+
 /* Number of points in the soft-clip transfer table. */
 #define POPPY_SOFTCLIP_TABLE_SIZE 256
 
@@ -66,12 +71,40 @@ extern const char *const mp7_instr_names[MP7_INSTR_COUNT];
  * context can be spotted. */
 #define MP7_CONTEXT_MAGIC 0x4D5037u /* "MP7" */
 
-/* Q15 sine of 2*pi*i/4096 for i = 0..4095, i.e. the full period.
- *
- * This is a file-scope `const` array in flash, shared by every context,
- * every voice and every future variant of the library. It is the only sine
- * data in the image, and no context carries a copy of it. */
-extern const int16_t poppy_sine[POPPY_SINE_TABLE_SIZE];
+/* First quadrant of the sine, Q15, for i = 0..1024. This is the only sine
+ * data in the image, and it is shared by every context, every voice and every
+ * future variant of the library. */
+extern const int16_t poppy_sine_quad1[POPPY_SINE_QUAD_SIZE];
+
+/* The full 4096-entry period, allocated and rebuilt from poppy_sine_quad1
+ * the first time mp7_init() runs. NULL until then (and if that allocation
+ * fails, in which case lookups fall back to the quadrant). */
+extern int16_t *poppy_sine;
+
+/* Allocate and rebuild the full sine period. Idempotent and meant to be
+ * called once, before any voice runs; the table lives for the process. */
+void poppy_sine_init(void);
+
+/* Q15 sine of 2*pi*i/4096 for any index, using the rebuilt table when it is
+ * available and the flash-resident quadrant otherwise. */
+static inline int16_t poppy_sine_at(uint32_t index)
+{
+    index &= 0xFFFu;
+
+    if (poppy_sine != 0) {
+        return poppy_sine[index];
+    }
+    if (index <= 1024u) {
+        return poppy_sine_quad1[index];
+    }
+    if (index <= 2047u) {
+        return poppy_sine_quad1[2048u - index];
+    }
+    if (index <= 3071u) {
+        return (int16_t)-poppy_sine_quad1[index - 2048u];
+    }
+    return (int16_t)-poppy_sine_quad1[4096u - index];
+}
 
 /* Soft-clip curve over x in [-3, 3], indexed through u = x/3 in [-1, 1].
  *

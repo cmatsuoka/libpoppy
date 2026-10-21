@@ -92,6 +92,9 @@ static int command_init(void)
         ok("mp7_set_sample_rate() takes effect");
     }
 
+    printf("sine quadrant       : %u entries, %lu bytes\n",
+           (unsigned)POPPY_SINE_QUAD_SIZE,
+           (unsigned long)(POPPY_SINE_QUAD_SIZE * sizeof(int16_t)));
     printf("sine table (shared) : %u entries, %lu bytes\n",
            (unsigned)POPPY_SINE_TABLE_SIZE,
            (unsigned long)(POPPY_SINE_TABLE_SIZE * sizeof(int16_t)));
@@ -106,8 +109,15 @@ static int command_sine(void)
     unsigned int i;
     int mismatches = 0;
     int worst = 0;
+    int fallback_mismatches = 0;
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+
+    if (poppy_sine == 0) {
+        fail("mp7_init() did not rebuild the sine table");
+        free(ctx);
+        return 1;
+    }
 
     for (i = 0; i < POPPY_SINE_TABLE_SIZE; i++) {
         double exact = 32767.0 * sin(2.0 * TEST_PI * (double)i / (double)POPPY_SINE_TABLE_SIZE);
@@ -127,22 +137,32 @@ static int command_sine(void)
             }
             mismatches++;
         }
+
+        if ((int)poppy_sine_at(i) != got) {
+            fallback_mismatches++;
+        }
     }
 
     if (mismatches != 0) {
-        printf("FAIL: %d of %u entries differ (worst %d LSB)\n",
+        printf("FAIL: %d of %u rebuilt entries differ (worst %d LSB)\n",
                mismatches, (unsigned)POPPY_SINE_TABLE_SIZE, worst);
         failures++;
     } else {
-        ok("the shared table matches sin(2*pi*i/4096) at all 4096 indices");
+        ok("the rebuilt table matches sin(2*pi*i/4096) at all 4096 indices");
     }
 
-    /* The table is the only sine data in the image, and it is shared:
-     * it must not live inside the context. */
-    if (sizeof(poppy_sine) != 8192u) {
-        fail("the sine table is not 8 KB");
+    if (fallback_mismatches != 0) {
+        fail("the quadrant fallback disagrees with the rebuilt table");
     } else {
-        ok("the sine table is 8 KB (4096 x int16)");
+        ok("the quadrant lookup agrees with the rebuilt table");
+    }
+
+    /* Only the first quadrant lives in the image; the full period is built
+     * once, on the first mp7_init(), and shared by every context. */
+    if ((POPPY_SINE_QUAD_SIZE * sizeof(int16_t)) != 2050u) {
+        fail("the sine quadrant is not 2050 bytes");
+    } else {
+        ok("the sine quadrant is 2050 bytes (1025 x int16)");
     }
 
     {
@@ -157,7 +177,7 @@ static int command_sine(void)
         }
     }
 
-    /* The table is const data: it must not depend on the context. */
+    /* The rebuilt table must not depend on the context. */
     if (ctx->sample_rate != MP7_DEFAULT_SAMPLE_RATE) {
         fail("the sample rate was not set");
     }

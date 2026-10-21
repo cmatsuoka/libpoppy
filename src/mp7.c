@@ -39,6 +39,8 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
         return;
     }
 
+    poppy_sine_init();
+
     memset(c, 0, sizeof(*c));
 
     if (sample_rate == 0u) {

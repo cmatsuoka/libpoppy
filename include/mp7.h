@@ -4,7 +4,9 @@
  * The Mini Pops is a 15-voice percussion unit. This library is a integer-only
  * (32-bit fixed point) reimplementation of its sound generation and its 20
  * factory rhythm patterns. It renders a single stereo mix into a caller-supplied
- * buffer; there is no allocation, no I/O and no floating point in the library.
+ * buffer. The first mp7_init() allocates and rebuilds the full-period sine table
+ * from its flash-resident first quadrant; there is no other allocation, no I/O
+ * and no floating point in the library.
  */
 
 #ifndef MP7_H
