@@ -43,8 +43,14 @@
  * instruments (bits 0..11). The Tambourine, Guiro and Quijada hits are the
  * same in every rhythm and are a separate definition of their own,
  * mp7_shared_percussion_notes; it is OR-ed into the combined grid and it is
- * what plays when no rhythm button is pressed. */
+ * what plays when no rhythm button is pressed.
+ *
+ * A rhythm whose 32-column half repeats to fill the 64-column cycle stores
+ * only that half and sets notes_period to MP7_PATTERN_HALF_STEPS. A rhythm
+ * that differs between the halves sets notes_period to MP7_PATTERN_STEPS.
+ * Both periods are powers of two, so column c is notes[c & (period - 1)]. */
 #define MP7_PATTERN_STEPS 64
+#define MP7_PATTERN_HALF_STEPS 32
 
 /* The fixed Tambourine/Guiro/Quijada layer. It is present in every factory
  * rhythm and keeps playing when no rhythm key is pressed. */
@@ -58,13 +64,14 @@
 #define MP7_PATTERN_RHYTHM_MASK 0x0FFFu
 
 struct mp7_factory_rhythm {
-    const uint16_t *notes; /* 64 columns, bit n = instrument n plays */
+    const uint16_t *notes; /* notes_period columns, bit n = instrument n plays */
     uint64_t enable;        /* bit c = column c is enabled */
+    uint8_t notes_period;   /* columns in notes: 32 or 64 */
     uint8_t triplet;
 };
 
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
-extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_STEPS];
+extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS];
 
 /* Marker written into a context by mp7_init(), so that a half-initialized
  * context can be spotted. */

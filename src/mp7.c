@@ -411,6 +411,8 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
         out->notes = 0;
         out->percussion = 0;
         out->enable = 0;
+        out->notes_period = 0;
+        out->percussion_period = 0;
         out->triplet = false;
         return;
     }
@@ -419,6 +421,8 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
     out->notes = pattern->notes;
     out->percussion = mp7_shared_percussion_notes;
     out->enable = pattern->enable;
+    out->notes_period = pattern->notes_period;
+    out->percussion_period = MP7_PATTERN_HALF_STEPS;
     out->triplet = (pattern->triplet != 0u);
 }
 

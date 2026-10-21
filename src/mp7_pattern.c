@@ -33,6 +33,14 @@
  * playhead wraps. These are grid positions, not a musical meter. */
 #define MP7_LAMP_HALF_COLUMN 31u
 
+/* Both the rhythm grids and the shared percussion layer may store only a
+ * 32-column period that repeats to fill the 64-column cycle. The period is
+ * always a power of two, so masking wraps the column. */
+static unsigned int wrap_column(unsigned int column, unsigned int period)
+{
+    return column & (period - 1u);
+}
+
 static uint32_t sub_steps_per_column(const struct mp7_sequencer *seq)
 {
     return (seq->triplet != 0u) ? MP7_SUB_STEPS_TRIPLET : MP7_SUB_STEPS_STRAIGHT;
@@ -140,7 +148,8 @@ static void build_default_percussion(struct mp7_sequencer *seq)
     unsigned int column;
 
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        seq->notes[column] = mp7_shared_percussion_notes[column];
+        seq->notes[column] = mp7_shared_percussion_notes[
+            wrap_column(column, MP7_PATTERN_HALF_STEPS)];
     }
     seq->enable = ~(uint64_t)0;
     seq->triplet = 0u;
@@ -177,7 +186,8 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
         pattern = &mp7_factory_rhythms[rhythm];
 
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            seq->notes[column] |= pattern->notes[column];
+            seq->notes[column] |= pattern->notes[
+                wrap_column(column, pattern->notes_period)];
         }
         enable &= pattern->enable;
 
@@ -186,7 +196,8 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
 
     /* The shared Tambourine/Guiro/Quijada layer plays with every rhythm. */
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        seq->notes[column] |= mp7_shared_percussion_notes[column];
+        seq->notes[column] |= mp7_shared_percussion_notes[
+            wrap_column(column, MP7_PATTERN_HALF_STEPS)];
     }
 
     seq->enable = enable;

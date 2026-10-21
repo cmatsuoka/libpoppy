@@ -605,6 +605,18 @@ static uint64_t pattern_enable_mask(unsigned int rhythm)
     return mp7_factory_rhythms[rhythm].enable;
 }
 
+static uint16_t pattern_note(const struct mp7_factory_rhythm *pattern,
+                             unsigned int column)
+{
+    return pattern->notes[column & (unsigned int)(pattern->notes_period - 1u)];
+}
+
+static uint16_t percussion_note(unsigned int column)
+{
+    return mp7_shared_percussion_notes[
+        column & (MP7_PATTERN_HALF_STEPS - 1u)];
+}
+
 static int command_pattern(void)
 {
     static const unsigned int short_loop[5] = { 0u, 8u, 10u, 15u, 18u };
@@ -648,7 +660,8 @@ static int command_pattern(void)
         }
 
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if ((pattern->notes[column] & (uint16_t)~MP7_PATTERN_RHYTHM_MASK) != 0u) {
+            if ((pattern_note(pattern, column) &
+                 (uint16_t)~MP7_PATTERN_RHYTHM_MASK) != 0u) {
                 printf("FAIL: %s column %u is not a rhythm instrument mask\n",
                        test_rhythm_names[rhythm], column);
                 failures++;
@@ -664,6 +677,13 @@ static int command_pattern(void)
          UINT64_C(0x3F3F3F3F3F3F3F3F)) ||
         (mp7_factory_rhythms[MP7_RHYTHM_SAMBA].enable != ~(uint64_t)0)) {
         fail("the time-signature enable masks are wrong");
+    }
+
+    if ((mp7_factory_rhythms[MP7_RHYTHM_WALTZ].notes_period !=
+         MP7_PATTERN_HALF_STEPS) ||
+        (mp7_factory_rhythms[MP7_RHYTHM_SAMBA].notes_period !=
+         MP7_PATTERN_STEPS)) {
+        fail("the 32-column note periods are not marked correctly");
     }
 
     if (failures == 0) {
@@ -694,7 +714,7 @@ static int command_pattern(void)
             if (quijada[column] == 'X') {
                 expect |= (uint16_t)(1u << MP7_INSTR_QUIJADA);
             }
-            if (mp7_shared_percussion_notes[column] != expect) {
+            if (percussion_note(column) != expect) {
                 printf("FAIL: the shared percussion differs on column %u\n",
                        column);
                 failures++;
@@ -706,7 +726,8 @@ static int command_pattern(void)
             const struct mp7_factory_rhythm *pattern = &mp7_factory_rhythms[rhythm];
 
             for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-                if ((pattern->notes[column] & MP7_PATTERN_PERCUSSION_MASK) != 0u) {
+                if ((pattern_note(pattern, column) &
+                     MP7_PATTERN_PERCUSSION_MASK) != 0u) {
                     printf("FAIL: %s carries the shared percussion itself\n",
                            test_rhythm_names[rhythm]);
                     failures++;
@@ -738,8 +759,8 @@ static int command_pattern(void)
         int bad = 0;
 
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if ((ctx->sequencer.notes[column] & mp7_shared_percussion_notes[column]) !=
-                mp7_shared_percussion_notes[column]) {
+            if ((ctx->sequencer.notes[column] & percussion_note(column)) !=
+                percussion_note(column)) {
                 bad = 1;
                 break;
             }
@@ -1442,6 +1463,8 @@ static int command_api(void)
             if ((view.notes != mp7_factory_rhythms[i].notes) ||
                 (view.percussion != mp7_shared_percussion_notes) ||
                 (view.enable != mp7_factory_rhythms[i].enable) ||
+                (view.notes_period != mp7_factory_rhythms[i].notes_period) ||
+                (view.percussion_period != MP7_PATTERN_HALF_STEPS) ||
                 (view.triplet != (mp7_factory_rhythms[i].triplet != 0u))) {
                 bad = 1;
                 break;
@@ -1450,6 +1473,7 @@ static int command_api(void)
 
         mp7_get_factory_pattern((mp7_rhythm)MP7_RHYTHM_COUNT, &view);
         if ((view.notes != 0) || (view.percussion != 0) || (view.enable != 0) ||
+            (view.notes_period != 0) || (view.percussion_period != 0) ||
             view.triplet) {
             bad = 1;
         }

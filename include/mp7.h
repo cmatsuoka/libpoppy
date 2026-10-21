@@ -81,15 +81,19 @@ typedef void *mp7_context;
 /* A view of one factory rhythm. The pointers refer to const data owned by the
  * library and remain valid for the life of the process.
  *
- * `notes` is 64 columns of 16-bit instrument masks: bit n is set when
- * instrument n (in mp7_instr order) plays in that column, so bit 0 is the
- * Bass Drum. It holds the rhythm's own twelve instruments, bits 0..11.
+ * `notes` is `notes_period` columns of 16-bit instrument masks: bit n is set
+ * when instrument n (in mp7_instr order) plays in that column, so bit 0 is
+ * the Bass Drum. It holds the rhythm's own twelve instruments, bits 0..11.
+ * `notes_period` is 32 when the second half of the grid repeats the first,
+ * otherwise 64. Column c of the 64-column cycle is
+ * `notes[c & (notes_period - 1)]`.
  *
- * `percussion` is the shared Tambourine/Guiro/Quijada layer, 64 columns of
- * the same kind of mask, with bits 12..14 (Tambourine 12, Guiro 13,
- * Quijada 14). It is the same array for every rhythm, and it is the layer
- * that plays on its own when no rhythm button is pressed. The complete
- * pattern of a rhythm is `notes[column] | percussion[column]`.
+ * `percussion` is the shared Tambourine/Guiro/Quijada layer,
+ * `percussion_period` columns of the same kind of mask, with bits 12..14
+ * (Tambourine 12, Guiro 13, Quijada 14). It is the same array for every
+ * rhythm, and it is the layer that plays on its own when no rhythm button is
+ * pressed. The complete pattern column c is
+ * `notes[c & (notes_period - 1)] | percussion[c & (percussion_period - 1)]`.
  *
  * `enable` is a 64-bit mask, one bit per column; disabled columns take no
  * time. `triplet` is true for the shuffle rhythms. */
@@ -97,6 +101,8 @@ struct mp7_pattern_view {
     const uint16_t *notes;
     const uint16_t *percussion;
     uint64_t enable;
+    uint8_t notes_period;
+    uint8_t percussion_period;
     bool triplet;
 };
 
