@@ -32,13 +32,15 @@ LIB_SRCS  := $(wildcard src/*.c)
 TEST_SRCS := $(wildcard test/*.c)
 LIB_OBJS  := $(patsubst src/%.c,$(BUILD)/src/%.o,$(LIB_SRCS))
 TEST_OBJS := $(patsubst test/%.c,$(BUILD)/test/%.o,$(TEST_SRCS))
+EXAMPLES := $(wildcard examples/*.c)
+EXAMPLE_OBJS := $(patsubst examples/%.c,$(BUILD)/examples/%.o,$(EXAMPLES))
 
 LIB  := libpoppy.a
 TEST := mp7_test
 
 .PHONY: all check clean
 
-all: $(LIB) $(TEST)
+all: $(LIB) $(TEST) $(EXAMPLE_OBJS)
 
 $(LIB): $(LIB_OBJS)
 	$(AR) rcs $@ $^
@@ -55,7 +57,11 @@ $(BUILD)/test/%.o: test/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(TEST_CFLAGS) -c -o $@ $<
 
-check: $(TEST)
+$(BUILD)/examples/%.o: examples/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(LIB_CFLAGS) -c -o $@ $<
+
+check: $(TEST) $(EXAMPLE_OBJS)
 	./$(TEST) --init
 	./$(TEST) --sine
 	./$(TEST) --gain
@@ -65,10 +71,11 @@ check: $(TEST)
 	./$(TEST) --guiro
 	./$(TEST) --quijada
 	./$(TEST) --mixer
+	./$(TEST) --api
 	./$(TEST) --pattern
 	./$(TEST) --rhythms $(BUILD)
 
 clean:
 	rm -rf $(BUILD) $(LIB) $(TEST) silence.wav
 
--include $(LIB_OBJS:.o=.d) $(TEST_OBJS:.o=.d)
+-include $(LIB_OBJS:.o=.d) $(TEST_OBJS:.o=.d) $(EXAMPLE_OBJS:.o=.d)

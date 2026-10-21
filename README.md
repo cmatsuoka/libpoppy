@@ -33,6 +33,50 @@ int16_t block[128 * 2];
 mp7_process(ctx, block, 128);      /* from the audio ISR */
 ```
 
+Only the original unit's panel controls are exposed: master Volume, Balance,
+the Quijada/Guiro/Tambourine Additional Volume faders, tempo and rhythm
+selection. Synthesis parameters (frequency, envelope times, filter settings
+and so on) are fixed constants inside the engines. Gains are linear Q16
+values: 1.0 is `65536`.
+
+Rhythm selection mirrors the panel: a bank lever (`MP7_BANK_A` / `MP7_BANK_B`)
+plus a 10-bit mask of the pressed rhythm buttons. Only rhythms in the selected
+bank can be combined. A button mask of 0 means no button is pressed: the main
+rhythms stop but the fixed Tambourine/Guiro/Quijada layer keeps playing, as on
+the original unit. Use `mp7_stop_rhythms()` for Stop.
+
+```c
+mp7_set_volume(ctx, 65536);                 /* panel 1.0 -> 0.5x master gain */
+mp7_set_balance(ctx, 32768);                /* centre */
+mp7_set_perc_gain(ctx, MP7_INSTR_QUIJADA, 65536);
+mp7_set_tempo(ctx, 120);
+
+/* Bank A, Waltz + Samba buttons latched. */
+mp7_set_rhythm(ctx, MP7_BANK_A,
+               mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+                   mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
+
+/* Switch to bank B button 0 (Jazz Waltz) at the next cycle. */
+mp7_queue_rhythm(ctx, mp7_rhythm_bank(MP7_RHYTHM_JAZZ_WALTZ),
+                 mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ));
+
+mp7_set_rhythm(ctx, MP7_BANK_A, 0);        /* no buttons: percussion only */
+mp7_trigger_note(ctx, 36, 100);             /* bass drum */
+mp7_trigger_note(ctx, 74, 0);               /* note-off (Guiro is the gated voice) */
+```
+
+The Guiro is the only gated voice. Its gate is shared between the pattern
+player and the note you trigger yourself: the voice sounds while either one
+holds it, so a note you hold is not cut off by the pattern, the pattern is not
+cut off by your note-off, and a note that arrives while the gate is already
+open does not restart the ratchet.
+
+The library is not thread-safe: `mp7_process()` and the setters must not run at
+the same time. On the FM-1 the panel glue applies its changes while the audio
+thread is blocked, or from the audio thread itself.
+
+`examples/fm1_wrapper.c` is a small example of the ISR and panel glue for the FM-1.
+
 ## Test harness
 
 ```sh
@@ -45,5 +89,6 @@ mp7_process(ctx, block, 128);      /* from the audio ISR */
 ./mp7_test --guiro            # verify Guiro gate hold and note-off release
 ./mp7_test --quijada          # verify Quijada frequencies, thresholds and comparator
 ./mp7_test --mixer            # verify pan, Volume, Balance and direct gains
+./mp7_test --api              # verify triggers, MIDI map, rhythms, tempo
 ./mp7_test --pattern          # verify the 20 patterns, combination and timing
 ./mp7_test --rhythms dir      # render all 20 rhythms and two combinations

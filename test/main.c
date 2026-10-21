@@ -15,6 +15,8 @@
  *   --guiro             verify Guiro gate hold and note-off release
  *   --quijada           verify Quijada frequencies, thresholds and comparator
  *   --mixer             verify pan, Volume, Balance and direct gains
+ *   --api               verify the public API: triggers, MIDI map, rhythm
+ *                       selection, tempo and mix controls
  *   --pattern           verify the 20 patterns, combination and timing
  *   --rhythms [dir]     render all 20 rhythms and two combinations to WAV
  *   --help              this text
@@ -579,9 +581,9 @@ static int command_pattern(void)
 
     mp7_init(ctx, sample_rate);
 
-    /* The factory data itself: a column mask only uses the rhythm
-     * instrument bits, the five short loops enable 48 columns, everything
-     * else enables all 64, and the triplet flags match. */
+    /* The factory data itself: a rhythm's own column mask only uses the
+     * twelve rhythm instrument bits, the five short loops enable 48 columns,
+     * everything else enables all 64, and the triplet flags match. */
     for (rhythm = 0u; rhythm < (unsigned int)MP7_RHYTHM_COUNT; rhythm++) {
         const struct mp7_factory_rhythm *pattern = &mp7_factory_rhythms[rhythm];
         int expect_short = 0;
@@ -611,8 +613,8 @@ static int command_pattern(void)
         }
 
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if ((pattern->notes[column] & ~MP7_PATTERN_RHYTHM_MASK) != 0u) {
-                printf("FAIL: %s column %u uses the percussion bits\n",
+            if ((pattern->notes[column] & (uint16_t)~MP7_PATTERN_RHYTHM_MASK) != 0u) {
+                printf("FAIL: %s column %u is not a rhythm instrument mask\n",
                        mp7_rhythm_names[rhythm], column);
                 failures++;
                 break;
@@ -624,20 +626,53 @@ static int command_pattern(void)
         ok("the 20 factory patterns are well formed");
     }
 
-    /* The shared percussion is stored once; combining any rhythm must place
-     * it in the three percussion bits of every column. */
-    for (rhythm = 0u; rhythm < (unsigned int)MP7_RHYTHM_COUNT; rhythm++) {
+    /* The Tambourine, Guiro and Quijada layer is a separate definition: it
+     * uses only the three percussion bits, and it is not part of any
+     * rhythm's own grid. */
+    {
+        static const char tambourine[] =
+            "X...X...X...X...X...X...X...X...X...X...X...X...X...X...X...X...";
+        static const char guiro[] =
+            "XXXX....X...X...XXXX....X...X...XXXX....X...X...XXXX....X...X...";
+        static const char quijada[] =
+            "........................X...............................X.......";
         unsigned int column;
 
-        mp7_pattern_combine(ctx, (uint32_t)1u << rhythm);
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if ((ctx->sequencer.notes[column] & MP7_PATTERN_PERCUSSION_MASK) !=
-                mp7_shared_percussion_notes[column]) {
-                printf("FAIL: %s did not include the shared percussion\n",
-                       mp7_rhythm_names[rhythm]);
+            uint16_t expect = 0u;
+
+            if (tambourine[column] == 'X') {
+                expect |= (uint16_t)(1u << MP7_INSTR_TAMBOURINE);
+            }
+            if (guiro[column] == 'X') {
+                expect |= (uint16_t)(1u << MP7_INSTR_GUIRO);
+            }
+            if (quijada[column] == 'X') {
+                expect |= (uint16_t)(1u << MP7_INSTR_QUIJADA);
+            }
+            if (mp7_shared_percussion_notes[column] != expect) {
+                printf("FAIL: the shared percussion differs on column %u\n",
+                       column);
                 failures++;
                 break;
             }
+        }
+
+        for (rhythm = 0u; rhythm < (unsigned int)MP7_RHYTHM_COUNT; rhythm++) {
+            const struct mp7_factory_rhythm *pattern = &mp7_factory_rhythms[rhythm];
+
+            for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+                if ((pattern->notes[column] & MP7_PATTERN_PERCUSSION_MASK) != 0u) {
+                    printf("FAIL: %s carries the shared percussion itself\n",
+                           mp7_rhythm_names[rhythm]);
+                    failures++;
+                    break;
+                }
+            }
+        }
+
+        if (failures == 0) {
+            ok("the shared percussion layer is a separate definition");
         }
     }
 
@@ -651,6 +686,25 @@ static int command_pattern(void)
     }
     if ((ctx->sequencer.notes[12] & (1u << MP7_INSTR_BASS)) == 0u) {
         fail("Rock 1 lost its Base hit at column 12");
+    }
+
+    /* The combined grid carries the shared percussion layer in every column. */
+    {
+        unsigned int column;
+        int bad = 0;
+
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if ((ctx->sequencer.notes[column] & mp7_shared_percussion_notes[column]) !=
+                mp7_shared_percussion_notes[column]) {
+                bad = 1;
+                break;
+            }
+        }
+        if (bad) {
+            fail("the combined grid does not carry the shared percussion");
+        } else {
+            ok("the combined grid carries the shared percussion layer");
+        }
     }
 
     mp7_pattern_combine(ctx,
@@ -759,6 +813,24 @@ static int command_pattern(void)
                 fail("the Guiro gate stayed open on a rest column");
             }
         }
+    }
+
+    /* An immediate change that disables the column the playhead is on must
+     * not idle for a whole column: the next enabled column fires at the next
+     * sub-step boundary. March 2/4 disables columns 6 and 7 and hits Snare 2
+     * on column 8. */
+    mp7_init(ctx, sample_rate);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    ctx->sequencer.column = 6u;
+    ctx->sequencer.substep = 0u;
+    ctx->sequencer.sub_step_pos = 0u;
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
+    mp7_pattern_tick(ctx);
+    if ((ctx->voices[MP7_INSTR_SNARE_2].active == 0u) ||
+        (ctx->sequencer.column != 8u)) {
+        fail("the sequencer idled on a column the new grid disables");
+    } else {
+        ok("a column the new grid disables is skipped, not waited out");
     }
 
     free(ctx);
@@ -1305,6 +1377,515 @@ static int command_mixer(void)
     return failures == 0 ? 0 : 1;
 }
 
+static int command_api(void)
+{
+    static const uint8_t midi_notes[MP7_INSTR_COUNT] = {
+        36u, 40u, 38u, 60u, 61u, 64u, 56u, 75u,
+        42u, 37u, 49u, 57u, 54u, 74u, 79u
+    };
+    mp7_context *ctx = context_new();
+    unsigned int i;
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+
+    /* Names and factory-pattern access. */
+    if ((strcmp(mp7_instr_name(MP7_INSTR_QUIJADA), "Quijada") != 0) ||
+        (strcmp(mp7_rhythm_name(MP7_RHYTHM_LATIN_SWING), "Latin Swing") != 0) ||
+        (strcmp(mp7_instr_name((mp7_instr)MP7_INSTR_COUNT), "?") != 0) ||
+        (strcmp(mp7_rhythm_name((mp7_rhythm)MP7_RHYTHM_COUNT), "?") != 0)) {
+        fail("the name accessors do not return the expected strings");
+    } else {
+        ok("the instrument and rhythm name accessors work");
+    }
+
+    {
+        mp7_pattern_view view;
+        int bad = 0;
+
+        for (i = 0u; i < (unsigned int)MP7_RHYTHM_COUNT; i++) {
+            mp7_get_factory_pattern((mp7_rhythm)i, &view);
+            if ((view.notes != mp7_factory_rhythms[i].notes) ||
+                (view.percussion != mp7_shared_percussion_notes) ||
+                (view.enable != mp7_factory_rhythms[i].enable) ||
+                (view.triplet != (mp7_factory_rhythms[i].triplet != 0u))) {
+                bad = 1;
+                break;
+            }
+        }
+
+        mp7_get_factory_pattern((mp7_rhythm)MP7_RHYTHM_COUNT, &view);
+        if ((view.notes != 0) || (view.percussion != 0) || (view.enable != 0) ||
+            view.triplet) {
+            bad = 1;
+        }
+
+        if (bad) {
+            fail("mp7_get_factory_pattern() returned the wrong data");
+        } else {
+            ok("mp7_get_factory_pattern() returns the factory data");
+        }
+    }
+
+    /* MIDI note map: each factory note triggers exactly its instrument. */
+    {
+        int bad = 0;
+
+        for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+            unsigned int j;
+
+            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+            mp7_trigger_note(ctx, midi_notes[i], 100u);
+
+            for (j = 0u; j < (unsigned int)MP7_INSTR_COUNT; j++) {
+                int expected = ((unsigned int)j == i) ? 1 : 0;
+
+                if ((int)ctx->voices[j].active != expected) {
+                    bad = 1;
+                }
+            }
+            if (bad) {
+                printf("FAIL: MIDI note %u did not trigger exactly instrument %u\n",
+                       (unsigned int)midi_notes[i], i);
+                break;
+            }
+        }
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        mp7_trigger_note(ctx, 1u, 100u);
+        for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+            if (ctx->voices[i].active != 0u) {
+                bad = 1;
+            }
+        }
+
+        if (bad) {
+            failures++;
+        } else {
+            ok("the MIDI note map triggers the right instrument and ignores others");
+        }
+    }
+
+    /* Velocity 0 is note-off. It releases the gated Guiro and leaves a
+     * one-shot voice running. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_trigger(ctx, MP7_INSTR_GUIRO, 100u);
+    mp7_trigger(ctx, MP7_INSTR_GUIRO, 0u);
+    if (ctx->voices[MP7_INSTR_GUIRO].amp_env.stage != POPPY_ENV_RELEASE) {
+        fail("a zero-velocity Guiro trigger did not release the voice");
+    } else {
+        ok("a zero-velocity trigger releases the Guiro");
+    }
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_trigger(ctx, MP7_INSTR_BASS, 100u);
+    mp7_trigger(ctx, MP7_INSTR_BASS, 0u);
+    if (ctx->voices[MP7_INSTR_BASS].active == 0u) {
+        fail("note-off stopped a one-shot instrument");
+    } else {
+        ok("note-off leaves a one-shot instrument running");
+    }
+
+    /* The Guiro gate has two holders: the pattern's own gate and the note
+     * the caller triggers. Neither one may cut the other off. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_trigger(ctx, MP7_INSTR_GUIRO, 100u);
+    {
+        const size_t column_samples = 2u * (size_t)ctx->sequencer.sub_step_samples;
+        size_t t;
+
+        /* The shared Guiro row is XXXX...., so the pattern closes its own
+         * gate on column 4. */
+        for (t = 0u; t < 5u * column_samples; t++) {
+            mp7_pattern_tick(ctx);
+        }
+        if (ctx->sequencer.guiro_gated != 0u) {
+            fail("the pattern did not close its Guiro gate on a rest column");
+        } else if (ctx->voices[MP7_INSTR_GUIRO].amp_env.stage == POPPY_ENV_RELEASE) {
+            fail("the pattern released a Guiro note the caller holds");
+        } else {
+            ok("the pattern does not cut off a Guiro note the caller holds");
+        }
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_pattern_tick(ctx); /* column 0 opens the pattern's gate */
+    mp7_trigger(ctx, MP7_INSTR_GUIRO, 0u);
+    if (ctx->voices[MP7_INSTR_GUIRO].amp_env.stage == POPPY_ENV_RELEASE) {
+        fail("a caller's note-off cut off the pattern's Guiro gate");
+    } else {
+        ok("a caller's note-off does not cut off the pattern's Guiro gate");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_pattern_tick(ctx); /* column 0 opens the pattern's gate */
+    {
+        unsigned int sample;
+
+        /* The Guiro attack is 1 ms, so the gate reaches its hold stage well
+         * within this many samples. */
+        for (sample = 0u; sample < 4410u; sample++) {
+            (void)mp7_voice_process(&ctx->voices[MP7_INSTR_GUIRO]);
+        }
+    }
+    if (ctx->voices[MP7_INSTR_GUIRO].amp_env.stage != POPPY_ENV_HOLD) {
+        fail("the pattern's Guiro gate did not reach its hold stage");
+    } else {
+        mp7_trigger(ctx, MP7_INSTR_GUIRO, 100u);
+        if (ctx->voices[MP7_INSTR_GUIRO].amp_env.stage != POPPY_ENV_HOLD) {
+            fail("a caller's Guiro note restarted the pattern's ratchet");
+        } else {
+            ok("a caller's Guiro note does not restart the pattern's ratchet");
+        }
+    }
+
+    /* Rhythm selection mirrors the panel: one bank lever plus ten buttons. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    if (mp7_rhythm_running(ctx)) {
+        fail("the sequencer is running before the first selection");
+    }
+
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    if (!mp7_rhythm_running(ctx) ||
+        (ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ))) {
+        fail("the Waltz button did not select Waltz in bank A");
+    }
+
+    mp7_set_rhythm(ctx, MP7_BANK_A,
+                   mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+                       mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
+    if ((ctx->sequencer.selected !=
+         (mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+          mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4))) ||
+        (ctx->sequencer.triplet == 0u)) {
+        fail("two buttons in one bank did not combine their rhythms");
+    }
+
+    /* Keys 10..15 do not exist: they are ignored. */
+    mp7_set_rhythm(ctx, MP7_BANK_A, 0xFC00u);
+    if ((ctx->sequencer.selected != 0u) ||
+        (ctx->sequencer.enable != ~(uint64_t)0)) {
+        fail("button-mask bits above button 9 are not ignored");
+    }
+
+    mp7_stop_rhythms(ctx);
+    if (mp7_rhythm_running(ctx) || (ctx->sequencer.selected != 0u) ||
+        (ctx->sequencer.enable != 0u)) {
+        fail("mp7_stop_rhythms() did not stop the sequencer");
+    }
+    if (failures == 0) {
+        ok("the bank/button selection combines buttons and Clear stops the sequencer");
+    }
+
+    /* Mapping a rhythm name to its panel bank and button bit. */
+    if ((mp7_rhythm_bank(MP7_RHYTHM_WALTZ) != MP7_BANK_A) ||
+        (mp7_rhythm_bank(MP7_RHYTHM_JAZZ_WALTZ) != MP7_BANK_B) ||
+        (mp7_rhythm_bank(MP7_RHYTHM_LATIN_SWING) != MP7_BANK_B) ||
+        (mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) != 1u) ||
+        (mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA) != 2u) ||
+        (mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ) != 1u) ||
+        (mp7_rhythm_button_bit(MP7_RHYTHM_LATIN_SWING) != 512u) ||
+        (mp7_rhythm_bank((mp7_rhythm)MP7_RHYTHM_COUNT) != MP7_BANK_A) ||
+        (mp7_rhythm_button_bit((mp7_rhythm)MP7_RHYTHM_COUNT) != 0u)) {
+        fail("the rhythm-to-bank/button mapping is wrong");
+    } else {
+        ok("a rhythm maps to the correct bank and button bit");
+    }
+
+    /* The same button in bank B selects the corresponding upper-bank rhythm. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_B, 1u);
+    if (ctx->sequencer.selected != ((uint32_t)1u << 10)) {
+        fail("bank B button 0 did not select Jazz Waltz");
+    }
+    mp7_set_rhythm(ctx, MP7_BANK_A, 1u);
+    if (ctx->sequencer.selected != 1u) {
+        fail("bank A button 0 did not select Waltz");
+    } else {
+        ok("the bank lever reinterprets the same button mask");
+    }
+
+    /* An immediate change keeps the playhead. Selecting no buttons keeps the
+     * transport running and leaves only the Tambourine/Guiro/Quijada layer. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    {
+        uint8_t column;
+        uint8_t substep;
+        uint32_t position;
+        unsigned int t;
+        unsigned int column_index;
+        int saw_default_hits = 0;
+
+        for (t = 0u; t < 5u * 2u * 919u + 123u; t++) {
+            mp7_pattern_tick(ctx);
+        }
+        column = ctx->sequencer.column;
+        substep = ctx->sequencer.substep;
+        position = ctx->sequencer.sub_step_pos;
+
+        mp7_set_rhythm(ctx, MP7_BANK_A,
+                       mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+
+        if ((ctx->sequencer.column != column) ||
+            (ctx->sequencer.substep != substep) ||
+            (ctx->sequencer.sub_step_pos != position)) {
+            fail("an immediate rhythm change restarted the playhead");
+        } else if (ctx->sequencer.selected !=
+                   (mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                    mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ))) {
+            fail("an immediate rhythm change did not combine the grids");
+        } else {
+            ok("an immediate rhythm change preserves the playhead");
+        }
+
+        mp7_set_rhythm(ctx, MP7_BANK_A, 0u); /* no button pressed */
+
+        if ((ctx->sequencer.column != column) ||
+            (ctx->sequencer.substep != substep) ||
+            (ctx->sequencer.sub_step_pos != position) ||
+            !mp7_rhythm_running(ctx) ||
+            (ctx->sequencer.selected != 0u)) {
+            fail("selecting no rhythm buttons restarted or stopped the sequencer");
+        }
+
+        for (column_index = 0u; column_index < MP7_PATTERN_STEPS; column_index++) {
+            uint16_t hits = ctx->sequencer.notes[column_index];
+
+            if ((hits & ~MP7_PATTERN_PERCUSSION_MASK) != 0u) {
+                fail("the no-button grid contains a main rhythm instrument");
+                break;
+            }
+            if (hits != 0u) {
+                saw_default_hits = 1;
+            }
+        }
+        if (!saw_default_hits || (ctx->sequencer.enable != ~(uint64_t)0) ||
+            (ctx->sequencer.triplet != 0u)) {
+            fail("the no-button grid is not the straight, full-length percussion layer");
+        } else {
+            ok("no rhythm buttons keeps the fixed percussion layer playing");
+        }
+    }
+
+    /* The no-button layer triggers Tambourine and Guiro at column 0 and leaves
+     * the main instruments silent. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, 0u);
+    mp7_pattern_tick(ctx);
+    if ((ctx->voices[MP7_INSTR_TAMBOURINE].active == 0u) ||
+        (ctx->voices[MP7_INSTR_GUIRO].active == 0u) ||
+        (ctx->voices[MP7_INSTR_BASS].active != 0u) ||
+        (ctx->voices[MP7_INSTR_SNARE_1].active != 0u)) {
+        fail("the no-button layer does not fire only the percussion voices");
+    } else {
+        ok("the no-button layer fires Tambourine and Guiro, not the main rhythm");
+    }
+
+    /* A queued change waits for the pattern cycle to wrap. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    {
+        unsigned int t;
+
+        for (t = 0u; t < 10u * 2u * 919u + 300u; t++) {
+            mp7_pattern_tick(ctx);
+        }
+
+        mp7_queue_rhythm(ctx, MP7_BANK_A,
+                         mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                             mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        if ((ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1)) ||
+            (ctx->sequencer.pending_valid == 0u) ||
+            (ctx->sequencer.pending_selected !=
+             (mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+              mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ)))) {
+            fail("a queued rhythm change did not stay pending");
+        } else {
+            uint8_t previous = ctx->sequencer.column;
+            int wrapped = 0;
+
+            for (t = 0u; t < 128u * 2u * 919u; t++) {
+                mp7_pattern_tick(ctx);
+                if (ctx->sequencer.column < previous) {
+                    wrapped = 1;
+                    break;
+                }
+                previous = ctx->sequencer.column;
+            }
+
+            if (!wrapped) {
+                fail("the pattern never wrapped while a change was queued");
+            } else if ((ctx->sequencer.selected !=
+                        (mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                         mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ))) ||
+                       (ctx->sequencer.pending_valid != 0u) ||
+                       (ctx->sequencer.column != 0u)) {
+                fail("a queued rhythm change was not applied at the cycle wrap");
+            } else {
+                ok("a queued rhythm change starts at the next pattern cycle");
+            }
+        }
+    }
+
+    /* A queued selection replaces any earlier pending selection; an immediate
+     * set cancels it. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_pattern_tick(ctx);
+    mp7_queue_rhythm(ctx, MP7_BANK_A,
+                     mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                         mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+                         mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
+    mp7_queue_rhythm(ctx, MP7_BANK_A,
+                     mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                         mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
+    if ((ctx->sequencer.pending_selected !=
+         (mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+          mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA))) ||
+        (ctx->sequencer.pending_valid == 0u)) {
+        fail("a later queued selection did not replace the pending one");
+    }
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    if (ctx->sequencer.pending_valid != 0u) {
+        fail("an immediate selection did not cancel the pending change");
+    } else {
+        ok("queued selections are replaced by later queues or immediate sets");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_pattern_tick(ctx);
+    mp7_queue_rhythm(ctx, MP7_BANK_A, 0u); /* queue the no-button layer */
+    if ((ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1)) ||
+        (ctx->sequencer.pending_valid == 0u) ||
+        (ctx->sequencer.pending_selected != 0u)) {
+        fail("a queued no-button selection did not stay pending");
+    } else {
+        unsigned int t;
+
+        for (t = 0u; t < 128u * 2u * 919u; t++) {
+            uint8_t previous = ctx->sequencer.column;
+
+            mp7_pattern_tick(ctx);
+            if (ctx->sequencer.column < previous) {
+                break;
+            }
+        }
+        if ((ctx->sequencer.selected != 0u) ||
+            (ctx->sequencer.pending_valid != 0u) ||
+            !mp7_rhythm_running(ctx) ||
+            (ctx->sequencer.enable != ~(uint64_t)0) ||
+            (ctx->sequencer.triplet != 0u)) {
+            fail("a queued no-button selection did not switch to the percussion layer");
+        } else {
+            ok("a queued no-button selection switches at the next cycle");
+        }
+    }
+
+    /* An immediate stop cancels a pending change and resets the transport. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_pattern_tick(ctx);
+    mp7_queue_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    mp7_stop_rhythms(ctx);
+    if (mp7_rhythm_running(ctx) ||
+        (ctx->sequencer.pending_valid != 0u) ||
+        (ctx->sequencer.selected != 0u) ||
+        (ctx->sequencer.enable != 0u)) {
+        fail("an immediate stop did not cancel the pending change");
+    } else {
+        ok("an immediate stop cancels a pending rhythm change");
+    }
+
+    /* Queueing while stopped has no cycle to wait for, so it starts now. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_queue_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    if ((ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ)) ||
+        (ctx->sequencer.pending_valid != 0u) ||
+        !mp7_rhythm_running(ctx)) {
+        fail("queueing a rhythm while stopped did not start it");
+    } else {
+        ok("queueing a rhythm while stopped starts it immediately");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_queue_rhythm(ctx, MP7_BANK_A, 0u);
+    if (!mp7_rhythm_running(ctx) || (ctx->sequencer.selected != 0u) ||
+        (ctx->sequencer.enable != ~(uint64_t)0)) {
+        fail("queueing no buttons while stopped did not start the percussion layer");
+    } else {
+        ok("queueing no buttons while stopped starts the percussion layer");
+    }
+
+    /* Tempo clamping and the verified sub-step interval. */
+    mp7_set_tempo(ctx, 120u);
+    if ((ctx->sequencer.tempo != 120u) || (ctx->sequencer.sub_step_samples != 919u)) {
+        fail("mp7_set_tempo(120) did not give a 919-sample sub-step");
+    }
+    mp7_set_tempo(ctx, 0u);
+    if (ctx->sequencer.tempo != 1u) {
+        fail("mp7_set_tempo(0) is not clamped to 1 BPM");
+    }
+    mp7_set_tempo(ctx, 1000u);
+    if (ctx->sequencer.tempo != 240u) {
+        fail("mp7_set_tempo(1000) is not clamped to 240 BPM");
+    }
+    if (failures == 0) {
+        ok("mp7_set_tempo() clamps to 1..240 and builds the sub-step");
+    }
+
+    /* Mix controls, including the direct-gain restrictions. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_volume(ctx, 500000);
+    if (ctx->mixer.panel_volume_q16 != 4 * POPPY_Q16_ONE) {
+        fail("mp7_set_volume() does not clamp to 4.0");
+    }
+    mp7_set_volume(ctx, -1);
+    if (ctx->mixer.panel_volume_q16 != 0) {
+        fail("mp7_set_volume() does not clamp to 0");
+    }
+    mp7_set_balance(ctx, 100000);
+    if (ctx->mixer.balance_q16 != POPPY_Q16_ONE) {
+        fail("mp7_set_balance() does not clamp to 1.0");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_perc_gain(ctx, MP7_INSTR_QUIJADA, 100000);
+    if (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE) {
+        fail("mp7_set_perc_gain() does not clamp Quijada to 1.0");
+    }
+    mp7_set_perc_gain(ctx, MP7_INSTR_GUIRO, -1);
+    if (ctx->mixer.direct_gain_q16[MP7_DIRECT_GUIRO] != 0) {
+        fail("mp7_set_perc_gain() does not clamp Guiro to 0");
+    }
+    mp7_set_perc_gain(ctx, MP7_INSTR_BASS, 0);
+    if (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE) {
+        fail("mp7_set_perc_gain() changed a voice with no panel fader");
+    }
+    if (failures == 0) {
+        ok("mp7_set_perc_gain() maps only Tambourine, Guiro and Quijada");
+    }
+
+    /* Reset restores the panel defaults. */
+    mp7_reset(ctx);
+    if ((ctx->mixer.panel_volume_q16 != POPPY_Q16_ONE) ||
+        (ctx->mixer.balance_q16 != POPPY_Q16_ONE / 2) ||
+        (ctx->mixer.direct_gain_q16[MP7_DIRECT_TAMBOURINE] != POPPY_Q16_ONE / 2) ||
+        (ctx->mixer.direct_gain_q16[MP7_DIRECT_GUIRO] != POPPY_Q16_ONE / 2) ||
+        (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE / 2) ||
+        (ctx->sequencer.tempo != 120u) || mp7_rhythm_running(ctx)) {
+        fail("mp7_reset() did not restore the panel defaults");
+    } else {
+        ok("mp7_reset() restores the panel defaults");
+    }
+
+    free(ctx);
+    return failures == 0 ? 0 : 1;
+}
+
 static void usage(const char *program)
 {
     printf("usage: %s <command>\n\n", program);
@@ -1319,6 +1900,8 @@ static void usage(const char *program)
            "  --noise            verify the 6 noise voices are uncorrelated\n"
            "  --guiro            verify Guiro gate hold and note-off release\n"
            "  --mixer            verify pan, Volume, Balance and direct gains\n"
+           "  --api              verify triggers, MIDI map, rhythm selection, tempo\n"
+           "                     and the panel mix controls\n"
            "  --pattern          verify the factory patterns, combination and timing\n"
            "  --rhythms [dir]    render all 20 rhythms and two combinations to WAV\n"
            "                     files (default dir: build)\n"
@@ -1368,6 +1951,9 @@ int main(int argc, char **argv)
     }
     if (strcmp(command, "--mixer") == 0) {
         return command_mixer();
+    }
+    if (strcmp(command, "--api") == 0) {
+        return command_api();
     }
     if (strcmp(command, "--pattern") == 0) {
         return command_pattern();

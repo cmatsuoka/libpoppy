@@ -7,8 +7,14 @@
  * column. Selecting several rhythms combines them by OR-ing the note masks,
  * AND-ing the enable masks and OR-ing the triplet flags.
  *
+ * The Tambourine, Guiro and Quijada hits are the same in every rhythm and
+ * live in their own definition, mp7_shared_percussion_notes. It is OR-ed into
+ * the combined grid of every selection, and it is the whole grid when no
+ * rhythm button is pressed.
+ *
  * Disabled columns take no time: the sequencer only ever visits enabled
- * columns. Each visited column lasts two sub-steps (straight) or three
+ * columns. A column that an immediate rhythm change disables is skipped, not
+ * waited out. Each visited column lasts two sub-steps (straight) or three
  * (triplet), and each sub-step lasts round(2.5 * sample_rate / tempo) samples.
  * Triggers are evaluated before the sample at a sub-step boundary is rendered.
  */
@@ -53,16 +59,39 @@ static uint8_t next_enabled_column(const struct mp7_sequencer *seq, uint8_t from
     return from;
 }
 
+void mp7_guiro_gate(struct mp7_context_s *ctx,
+                    uint8_t sequencer_gate,
+                    uint8_t manual_gate)
+{
+    int held;
+
+    ctx->sequencer.guiro_gated = sequencer_gate;
+    ctx->guiro_manual_gated = manual_gate;
+
+    /* The voice sounds while either holder keeps the gate open. */
+    held = (sequencer_gate != 0u) || (manual_gate != 0u);
+
+    if (held != 0) {
+        /* Re-entering an adjacent X keeps the gate open, so the ratchet runs
+         * without a release gap and is not restarted. */
+        if (ctx->guiro_open == 0u) {
+            mp7_voice_trigger(&ctx->voices[MP7_INSTR_GUIRO]);
+            ctx->guiro_open = 1u;
+        }
+    } else if (ctx->guiro_open != 0u) {
+        mp7_voice_release(&ctx->voices[MP7_INSTR_GUIRO]);
+        ctx->guiro_open = 0u;
+    }
+}
+
 void mp7_pattern_reset(struct mp7_context_s *ctx)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
 
-    /* A reset or a rhythm change can drop a Guiro gate that is still open. */
-    if (seq->guiro_gated != 0u) {
-        mp7_voice_release(&ctx->voices[MP7_INSTR_GUIRO]);
-    }
+    /* A reset or a rhythm change can drop a Guiro gate that is still open.
+     * A note the caller triggered itself is not affected. */
+    mp7_guiro_gate(ctx, 0u, ctx->guiro_manual_gated);
 
-    seq->guiro_gated = 0u;
     seq->substep = 0u;
     seq->sub_step_pos = 0u;
     seq->column = (seq->enable != 0u) ? first_enabled_column(seq) : 0u;
@@ -97,6 +126,21 @@ void mp7_pattern_set_tempo(struct mp7_context_s *ctx, uint32_t bpm)
     }
 }
 
+/* With no rhythm key pressed the original keeps the three Additional Volume
+ * voices running on their fixed layer; the main rhythm instruments are
+ * silent. That layer is the shared percussion definition, and it plays on
+ * its own, straight, over all 64 columns. */
+static void build_default_percussion(struct mp7_sequencer *seq)
+{
+    unsigned int column;
+
+    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+        seq->notes[column] = mp7_shared_percussion_notes[column];
+    }
+    seq->enable = ~(uint64_t)0;
+    seq->triplet = 0u;
+}
+
 void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
@@ -110,9 +154,12 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
     memset(seq->notes, 0, sizeof(seq->notes));
 
     if (selected == 0u) {
-        seq->enable = 0u;
-        seq->triplet = 0u;
-        mp7_pattern_reset(ctx);
+        if (seq->running != 0u) {
+            build_default_percussion(seq);
+        } else {
+            seq->enable = 0u;
+            seq->triplet = 0u;
+        }
         return;
     }
 
@@ -134,15 +181,13 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
         triplet |= pattern->triplet;
     }
 
-    /* The percussion hits are shared by every rhythm, so they are OR-ed in
-     * once rather than stored in each grid. */
+    /* The shared Tambourine/Guiro/Quijada layer plays with every rhythm. */
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
         seq->notes[column] |= mp7_shared_percussion_notes[column];
     }
 
     seq->enable = enable;
     seq->triplet = triplet;
-    mp7_pattern_reset(ctx);
 }
 
 void mp7_pattern_init(struct mp7_context_s *ctx)
@@ -153,29 +198,89 @@ void mp7_pattern_init(struct mp7_context_s *ctx)
     mp7_pattern_combine(ctx, 0u);
 }
 
-/* Emit the hits of the current column, and handle the Guiro gate. */
+/* Apply a queued selection when the current cycle wraps. The new pattern
+ * starts at its first enabled column; the sub-step interval was already
+ * established by the caller, so the first hit lands one column boundary
+ * later, exactly like an ordinary column change. */
+static void apply_pending(struct mp7_context_s *ctx)
+{
+    struct mp7_sequencer *seq = &ctx->sequencer;
+
+    if (seq->pending_valid == 0u) {
+        return;
+    }
+
+    seq->pending_valid = 0u;
+    if (seq->pending_selected == seq->selected) {
+        return;
+    }
+
+    mp7_pattern_combine(ctx, seq->pending_selected);
+
+    if (seq->enable == 0u) {
+        mp7_pattern_reset(ctx);
+        return;
+    }
+
+    seq->column = first_enabled_column(seq);
+    seq->substep = 0u;
+}
+
+/* Move the playhead to the next enabled column and apply a queued selection
+ * when the move wraps the cycle. Returns 0 when the sequencer has nothing
+ * left to play. */
+static int advance_column(struct mp7_context_s *ctx)
+{
+    struct mp7_sequencer *seq = &ctx->sequencer;
+    uint8_t previous = seq->column;
+    uint8_t next = next_enabled_column(seq, previous);
+
+    seq->column = next;
+
+    /* The column numbers increase within a cycle and wrap to a lower number
+     * (or to the same column when only one is enabled) at the cycle
+     * boundary. */
+    if ((next <= previous) && (seq->pending_valid != 0u)) {
+        apply_pending(ctx);
+        if (seq->enable == 0u) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+/* Emit the hits of the current column, and handle the Guiro gate.
+ *
+ * An immediate rhythm change can disable the column the playhead is on. Such
+ * a column takes no time, so the sequencer skips it and fires the next
+ * enabled column instead of idling for a whole column. */
 static void fire_column(struct mp7_context_s *ctx)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
-    uint8_t column = seq->column;
-    uint16_t hits = seq->notes[column];
+    uint8_t column;
+    uint16_t hits;
     unsigned int instr;
+
+    if ((seq->enable & ((uint64_t)1u << seq->column)) == 0u) {
+        if (advance_column(ctx) == 0) {
+            return;
+        }
+        if ((seq->enable & ((uint64_t)1u << seq->column)) == 0u) {
+            return; /* nothing is enabled, so there is nothing to fire */
+        }
+    }
+
+    column = seq->column;
+    hits = seq->notes[column];
 
     for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
         int hit = (int)((hits >> instr) & 1u);
 
         if (instr == (unsigned int)MP7_INSTR_GUIRO) {
-            if (hit != 0) {
-                /* Re-entering an adjacent X keeps the gate open, so the
-                 * ratchet runs without a release gap. */
-                if (seq->guiro_gated == 0u) {
-                    mp7_voice_trigger(&ctx->voices[instr]);
-                    seq->guiro_gated = 1u;
-                }
-            } else if (seq->guiro_gated != 0u) {
-                mp7_voice_release(&ctx->voices[instr]);
-                seq->guiro_gated = 0u;
-            }
+            /* The gate belongs to the sequencer, but a note the caller
+             * triggered itself keeps it open as well. */
+            mp7_guiro_gate(ctx, (uint8_t)(hit != 0), ctx->guiro_manual_gated);
         } else if (hit != 0) {
             mp7_voice_trigger(&ctx->voices[instr]);
         }
@@ -207,7 +312,9 @@ void mp7_pattern_tick(struct mp7_context_s *ctx)
         seq->substep++;
         if (seq->substep >= sub_steps_per_column(seq)) {
             seq->substep = 0u;
-            seq->column = next_enabled_column(seq, seq->column);
+            if (advance_column(ctx) == 0) {
+                return;
+            }
         }
     }
 

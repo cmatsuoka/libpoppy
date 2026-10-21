@@ -607,17 +607,18 @@ const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
 };
 
 /*
- * Factory rhythm data. The Tambourine, Guiro and Quijada hits are
- * identical in every rhythm, so they are stored once in
- * mp7_shared_percussion_notes and OR-ed into every pattern at run
- * time. Each rhythm stores only its 12 rhythm instruments, its
- * step-enable mask and its triplet flag.
+ * Factory rhythm data.
  *
  * A column is a 16-bit instrument mask: bit n is set when instrument
  * n (mp7_instr order) plays in that column, so bit 0 is the Base and
- * bit 14 the Quijada. A rhythm's own grid only uses the low
- * MP7_PATTERN_RHYTHM_ROWS bits; the shared percussion grid only uses
- * the three bits above them. Every array is const flash data.
+ * bit 14 the Quijada. Every array is const flash data.
+ *
+ * The Tambourine, Guiro and Quijada hits are identical in every rhythm, so
+ * they are a separate definition of their own: mp7_shared_percussion_notes
+ * holds that layer, and it is what plays when no rhythm button is pressed.
+ * A rhythm's own grid holds only the twelve rhythm instruments, and the
+ * shared layer is OR-ed into the combined grid when the rhythms are put
+ * together.
  *
  * The three distinct step-enable masks are defined once and shared by
  * every rhythm that uses them. The note grids are named after the
@@ -643,6 +644,8 @@ static const uint8_t mp7_enable_march[MP7_PATTERN_STEPS] = {
     1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0
 };
 
+/* The Tambourine, Guiro and Quijada layer. It is the same in every
+ * factory rhythm and it is what plays when no rhythm button is pressed. */
 const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_STEPS] = {
     0x3000, 0x2000, 0x2000, 0x2000, 0x1000, 0x0000, 0x0000, 0x0000,
     0x3000, 0x0000, 0x0000, 0x0000, 0x3000, 0x0000, 0x0000, 0x0000,
@@ -918,4 +921,22 @@ const char *const mp7_rhythm_names[MP7_RHYTHM_COUNT] = {
     "Rock 4",
     "March 6/8",
     "Latin Swing",
+};
+
+const char *const mp7_instr_names[MP7_INSTR_COUNT] = {
+    "Bass Drum",
+    "Snare 1",
+    "Snare 2",
+    "Hi Bongo",
+    "Lo Bongo",
+    "Conga",
+    "Cowbell",
+    "Claves",
+    "Hihat",
+    "Rimshot",
+    "Cymbal 1",
+    "Cymbal 2",
+    "Tambourine",
+    "Guiro",
+    "Quijada",
 };

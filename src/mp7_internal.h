@@ -33,21 +33,23 @@
  *
  * A column of the note grid is a 16-bit instrument mask: bit n is set when
  * instrument n (mp7_instr order) plays in that column, so bit 0 is the Bass
- * Drum and bit 14 the Quijada.
- *
- * The Tambourine, Guiro and Quijada hits are identical in every factory
- * rhythm, so they are stored once as MP7_PATTERN_PERCUSSION_ROWS shared
- * instruments instead of being repeated in each rhythm's grid. The per-rhythm
- * grids hold the MP7_PATTERN_RHYTHM_ROWS instruments below them. */
+ * Drum and bit 14 the Quijada. A rhythm's own grid holds the twelve rhythm
+ * instruments (bits 0..11). The Tambourine, Guiro and Quijada hits are the
+ * same in every rhythm and are a separate definition of their own,
+ * mp7_shared_percussion_notes; it is OR-ed into the combined grid and it is
+ * what plays when no rhythm button is pressed. */
 #define MP7_PATTERN_STEPS 64
-#define MP7_PATTERN_PERCUSSION_ROWS 3
-#define MP7_PATTERN_RHYTHM_ROWS (MP7_INSTR_COUNT - MP7_PATTERN_PERCUSSION_ROWS)
 
-/* The instrument bits a rhythm's own grid may use, and the bits the shared
- * percussion grid uses. */
-#define MP7_PATTERN_RHYTHM_MASK (((uint32_t)1u << MP7_PATTERN_RHYTHM_ROWS) - 1u)
+/* The fixed Tambourine/Guiro/Quijada layer. It is present in every factory
+ * rhythm and keeps playing when no rhythm key is pressed. */
 #define MP7_PATTERN_PERCUSSION_MASK \
-    ((((uint32_t)1u << MP7_PATTERN_PERCUSSION_ROWS) - 1u) << MP7_PATTERN_RHYTHM_ROWS)
+    ((uint16_t)((((uint32_t)1u << MP7_INSTR_TAMBOURINE) | \
+                 ((uint32_t)1u << MP7_INSTR_GUIRO) | \
+                 ((uint32_t)1u << MP7_INSTR_QUIJADA))))
+
+/* The instruments a rhythm's own grid may use: everything below the
+ * Tambourine, which is the first of the shared percussion voices. */
+#define MP7_PATTERN_RHYTHM_MASK 0x0FFFu
 
 struct mp7_factory_rhythm {
     const uint16_t *notes; /* 64 columns, bit n = instrument n plays */
@@ -58,6 +60,7 @@ struct mp7_factory_rhythm {
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
 extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_STEPS];
 extern const char *const mp7_rhythm_names[MP7_RHYTHM_COUNT];
+extern const char *const mp7_instr_names[MP7_INSTR_COUNT];
 
 /* Marker written into a context by mp7_init(), so that a half-initialized
  * context can be spotted. */
@@ -192,9 +195,19 @@ struct mp7_voice {
  * The sequencer triggers on sub-step boundaries. A straight column spans two
  * sub-steps and a triplet column spans three; `substep` counts the sub-steps
  * elapsed in the current column. `sub_step_pos` counts down samples to the
- * next boundary and is zero on the sample where the boundary is evaluated. */
+ * next boundary and is zero on the sample where the boundary is evaluated.
+ *
+ * `pending_selected` holds a rhythm selection that is waiting for the current
+ * pattern cycle to finish; `pending_valid` is set while it differs from
+ * `selected`. The change is applied when the last enabled column wraps to the
+ * first enabled column, and the new selection starts at its first column.
+ *
+ * `running` is the transport, which is separate from the key selection. When
+ * it is set and `selected` is zero, the combined grid is the fixed
+ * Tambourine/Guiro/Quijada percussion layer. */
 struct mp7_sequencer {
     uint32_t selected;                     /* bit n = mp7_rhythm n */
+    uint32_t pending_selected;             /* selection for the next cycle */
     uint32_t tempo;                        /* BPM, clamped to 1..240 */
     uint32_t sub_step_samples;             /* round(2.5 * sample_rate / tempo) */
     uint32_t sub_step_pos;                 /* samples until the next boundary */
@@ -203,17 +216,26 @@ struct mp7_sequencer {
     uint8_t column;                        /* current enabled column */
     uint8_t substep;                       /* sub-steps elapsed in the column */
     uint8_t triplet;
-    uint8_t guiro_gated;
+    uint8_t guiro_gated;                   /* the sequencer's own Guiro gate */
+    uint8_t pending_valid;
+    uint8_t running;                       /* transport: false after a stop */
 };
 
 /* Per-variant context. The caller owns the memory; mp7_context_size() gives
- * the size and mp7_init() prepares it. */
+ * the size and mp7_init() prepares it.
+ *
+ * The Guiro is the one gated voice, and the gate has two holders: the
+ * sequencer's own column gate (`sequencer.guiro_gated`) and a note the caller
+ * triggered itself (`guiro_manual_gated`). The voice sounds while either one
+ * holds the gate; `guiro_open` says whether it is gated right now. */
 struct mp7_context_s {
     uint32_t sample_rate;                  /* Hz, never 0 after init */
     uint32_t magic;                         /* MP7_CONTEXT_MAGIC once initialized */
     struct mp7_voice voices[MP7_INSTR_COUNT];
     struct mp7_sequencer sequencer;
     struct poppy_mixer mixer;
+    uint8_t guiro_manual_gated;             /* the caller's own Guiro note-on */
+    uint8_t guiro_open;                     /* the Guiro voice is gated now */
 };
 
 /* Voice and engine internals, exercised directly by the Phase 2 test harness.
@@ -229,14 +251,19 @@ int64_t mp7_voice_process(struct mp7_voice *voice);
 
 int64_t mp7_engine_process(struct mp7_voice *voice);
 
-/* Rhythm player internals. These are the shared, testable core of the
- * sequencer; the public mp7_set_rhythm()/mp7_set_tempo() wrappers are added
- * by the API phase. */
+/* Rhythm player internals. These are the testable core of the sequencer; the
+ * public rhythm setters in mp7.c wrap them. */
 void mp7_pattern_init(struct mp7_context_s *ctx);
 void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask);
 void mp7_pattern_set_tempo(struct mp7_context_s *ctx, uint32_t bpm);
 void mp7_pattern_reset(struct mp7_context_s *ctx);
 void mp7_pattern_tick(struct mp7_context_s *ctx);
+
+/* Apply the two Guiro gate holders and gate or release the voice so that it
+ * matches them. The ratchet restarts only when the gate opens. */
+void mp7_guiro_gate(struct mp7_context_s *ctx,
+                    uint8_t sequencer_gate,
+                    uint8_t manual_gate);
 
 void poppy_osc_set_freq(struct poppy_osc *osc, uint32_t freq_hz, uint32_t sample_rate);
 int32_t poppy_sine_sample(const struct poppy_osc *osc);
