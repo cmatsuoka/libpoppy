@@ -226,6 +226,7 @@ static uint32_t rhythm_selection(mp7_bank bank, uint16_t buttons)
 
 void mp7_set_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
 {
+    uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
     uint32_t selected;
     int was_running;
 
@@ -233,10 +234,15 @@ void mp7_set_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
         return;
     }
 
-    selected = rhythm_selection(bank, buttons);
+    bank = (bank == MP7_BANK_B) ? MP7_BANK_B : MP7_BANK_A;
+    selected = rhythm_selection(bank, button_mask);
     was_running = (ctx->sequencer.running != 0u);
 
     ctx->sequencer.running = 1u;
+    ctx->sequencer.bank = (uint8_t)bank;
+    ctx->sequencer.buttons = button_mask;
+    ctx->sequencer.pending_bank = (uint8_t)bank;
+    ctx->sequencer.pending_buttons = button_mask;
     ctx->sequencer.pending_selected = selected;
     ctx->sequencer.pending_valid = 0u;
 
@@ -247,23 +253,34 @@ void mp7_set_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
 
 void mp7_queue_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons)
 {
+    uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
     uint32_t selected;
 
     if (!context_valid(ctx)) {
         return;
     }
 
-    selected = rhythm_selection(bank, buttons);
+    bank = (bank == MP7_BANK_B) ? MP7_BANK_B : MP7_BANK_A;
+    selected = rhythm_selection(bank, button_mask);
 
     /* There is no current cycle to finish when the sequencer is stopped. */
     if (ctx->sequencer.running == 0u) {
-        mp7_set_rhythm(ctx, bank, buttons);
+        mp7_set_rhythm(ctx, bank, button_mask);
         return;
     }
 
     ctx->sequencer.pending_selected = selected;
+    ctx->sequencer.pending_bank = (uint8_t)bank;
+    ctx->sequencer.pending_buttons = button_mask;
+
+    /* A change is pending when the rhythm mask or the panel indication
+     * changes. The two are not the same thing: the no-button layer is the
+     * same on both banks, so a lever change alone would not show up in the
+     * mask, yet the bank lamp still has to follow it. */
     ctx->sequencer.pending_valid =
-        (selected != ctx->sequencer.selected) ? 1u : 0u;
+        ((selected != ctx->sequencer.selected) ||
+         ((uint8_t)bank != ctx->sequencer.bank) ||
+         (button_mask != ctx->sequencer.buttons)) ? 1u : 0u;
 }
 
 void mp7_stop_rhythms(mp7_context *ctx)
@@ -275,6 +292,8 @@ void mp7_stop_rhythms(mp7_context *ctx)
     ctx->sequencer.running = 0u;
     ctx->sequencer.selected = 0u;
     ctx->sequencer.pending_selected = 0u;
+    ctx->sequencer.pending_bank = ctx->sequencer.bank;
+    ctx->sequencer.pending_buttons = ctx->sequencer.buttons;
     ctx->sequencer.pending_valid = 0u;
 
     mp7_pattern_combine(ctx, 0u);
@@ -293,6 +312,29 @@ void mp7_set_tempo(mp7_context *ctx, uint16_t bpm)
 bool mp7_rhythm_running(const mp7_context *ctx)
 {
     return context_valid(ctx) && (ctx->sequencer.running != 0u);
+}
+
+void mp7_get_panel_state(const mp7_context *ctx, mp7_panel_state *out)
+{
+    if (out == 0) {
+        return;
+    }
+
+    if (!context_valid(ctx)) {
+        memset(out, 0, sizeof(*out));
+        out->bank = MP7_BANK_A;
+        out->pending_bank = MP7_BANK_A;
+        return;
+    }
+
+    out->bank = (mp7_bank)ctx->sequencer.bank;
+    out->buttons = ctx->sequencer.buttons;
+    out->pending_bank = (mp7_bank)ctx->sequencer.pending_bank;
+    out->pending_buttons = ctx->sequencer.pending_buttons;
+    out->pending = (ctx->sequencer.pending_valid != 0u);
+    out->running = (ctx->sequencer.running != 0u);
+    out->column = ctx->sequencer.column;
+    out->flash_count = ctx->sequencer.flash_count;
 }
 
 void mp7_set_volume(mp7_context *ctx, int32_t volume_q16)

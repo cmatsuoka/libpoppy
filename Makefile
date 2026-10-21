@@ -72,6 +72,7 @@ check: $(TEST) $(EXAMPLE_OBJS)
 	./$(TEST) --quijada
 	./$(TEST) --mixer
 	./$(TEST) --api
+	./$(TEST) --panel
 	./$(TEST) --pattern
 	./$(TEST) --rhythms $(BUILD)
 

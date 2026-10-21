@@ -28,6 +28,11 @@
 #define MP7_DEFAULT_TEMPO 120u
 #define MP7_MAX_TEMPO 240u
 
+/* The reference unit flashes the pilot/tempo lamp when the playhead reaches
+ * column 31 - its "second 32-column half" test is off by one - and when the
+ * playhead wraps. These are grid positions, not a musical meter. */
+#define MP7_LAMP_HALF_COLUMN 31u
+
 static uint32_t sub_steps_per_column(const struct mp7_sequencer *seq)
 {
     return (seq->triplet != 0u) ? MP7_SUB_STEPS_TRIPLET : MP7_SUB_STEPS_STRAIGHT;
@@ -211,6 +216,14 @@ static void apply_pending(struct mp7_context_s *ctx)
     }
 
     seq->pending_valid = 0u;
+
+    /* The bank and the button mask are the panel indication, and they are
+     * applied even when the rhythm mask itself does not change: the
+     * no-button layer is the same on both banks, so a lever change is
+     * invisible in the rhythm but the bank lamp still has to follow it. */
+    seq->bank = seq->pending_bank;
+    seq->buttons = seq->pending_buttons;
+
     if (seq->pending_selected == seq->selected) {
         return;
     }
@@ -234,6 +247,15 @@ static int advance_column(struct mp7_context_s *ctx)
     struct mp7_sequencer *seq = &ctx->sequencer;
     uint8_t previous = seq->column;
     uint8_t next = next_enabled_column(seq, previous);
+
+    /* Match the reference lamp: flash when the playhead crosses column 31,
+     * and when it wraps to the start of the cycle. A single-column grid
+     * (next == previous) does not flash every step. */
+    if (((previous < MP7_LAMP_HALF_COLUMN) &&
+         (next >= MP7_LAMP_HALF_COLUMN)) ||
+        (next < previous)) {
+        seq->flash_count++;
+    }
 
     seq->column = next;
 

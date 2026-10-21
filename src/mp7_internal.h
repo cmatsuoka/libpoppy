@@ -211,8 +211,13 @@ struct mp7_sequencer {
     uint32_t tempo;                        /* BPM, clamped to 1..240 */
     uint32_t sub_step_samples;             /* round(2.5 * sample_rate / tempo) */
     uint32_t sub_step_pos;                 /* samples until the next boundary */
+    uint32_t flash_count;                  /* monotonic lamp flash counter */
     uint64_t enable;                       /* combined step-enable mask */
     uint16_t notes[MP7_PATTERN_STEPS];     /* bit n = instrument n plays */
+    uint16_t buttons;                      /* applied ten-button mask */
+    uint16_t pending_buttons;              /* queued ten-button mask */
+    uint8_t bank;                          /* applied lever position */
+    uint8_t pending_bank;                  /* queued lever position */
     uint8_t column;                        /* current enabled column */
     uint8_t substep;                       /* sub-steps elapsed in the column */
     uint8_t triplet;

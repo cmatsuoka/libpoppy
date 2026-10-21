@@ -168,11 +168,17 @@ void mp7_set_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons);
  * selection; the new selection is applied when the last enabled column wraps
  * to the first, and starts from its first enabled column. If the sequencer is
  * stopped, the selection takes effect immediately and starts it. An immediate
- * mp7_set_rhythm() cancels a pending change. */
+ * mp7_set_rhythm() cancels a pending change.
+ *
+ * A change that only moves the lever is queued and applied like any other:
+ * with no rhythm button pressed both banks play the same percussion layer,
+ * so the rhythm does not change, but the bank indication still follows the
+ * lever at the cycle wrap. */
 void mp7_queue_rhythm(mp7_context *ctx, mp7_bank bank, uint16_t buttons);
 
 /* Stop the sequencer immediately (the panel's Stop switch): silence, reset the
- * playhead and cancel any pending change. This is distinct from selecting no
+ * playhead and cancel any pending change. The last bank/button selection is
+ * retained for mp7_get_panel_state(). This is distinct from selecting no
  * rhythm buttons, which keeps the percussion layer running. */
 void mp7_stop_rhythms(mp7_context *ctx);
 
@@ -183,6 +189,44 @@ void mp7_set_tempo(mp7_context *ctx, uint16_t bpm);
  * where only the fixed percussion layer plays. False after mp7_stop_rhythms()
  * or before the first mp7_set_rhythm()/mp7_queue_rhythm(). */
 bool mp7_rhythm_running(const mp7_context *ctx);
+
+/* A snapshot of the panel state for a host UI.
+ *
+ * `bank` and `buttons` are the selection last applied by mp7_set_rhythm() or
+ * by a queued change at the cycle wrap. `buttons` is the ten-button mask (bits
+ * 10..15 are always clear). The selection is retained across
+ * mp7_stop_rhythms(), which only stops the transport.
+ *
+ * `pending_*` describe a selection queued with mp7_queue_rhythm() and not yet
+ * applied; they are meaningful only when `pending` is true.
+ *
+ * `column` is the current grid column, 0..63. `flash_count` is a monotonic
+ * count of the lamp flashes produced by the sequencer. It advances at the same
+ * two points as the reference unit: when the playhead reaches the first
+ * enabled column at or after column 31 - the last column of the first
+ * 32-column half - and when the playhead wraps back to the first enabled
+ * column. It never decreases, is not reset by mp7_stop_rhythms(), and is
+ * reset only by mp7_init()/mp7_reset().
+ *
+ * The host can drive the two pilot/tempo lamps from this snapshot: light the
+ * lamp for `bank` while stopped; while running, pulse that lamp whenever
+ * `flash_count` changes. The host owns the visible pulse length. */
+typedef struct {
+    mp7_bank bank;
+    uint16_t buttons;
+    mp7_bank pending_bank;
+    uint16_t pending_buttons;
+    bool pending;
+    bool running;
+    uint8_t column;
+    uint32_t flash_count;
+} mp7_panel_state;
+
+/* Copy the current panel state into `out`. A null `out` is ignored and
+ * nothing is written. A null or invalid context yields a zeroed snapshot
+ * (bank A, not running). The library is not thread-safe: do not call this
+ * while mp7_process() is running on another thread. */
+void mp7_get_panel_state(const mp7_context *ctx, mp7_panel_state *out);
 
 /* Global mix controls, mapping the panel's remaining faders.
  *

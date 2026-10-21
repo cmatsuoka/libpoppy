@@ -17,6 +17,7 @@
  *   --mixer             verify pan, Volume, Balance and direct gains
  *   --api               verify the public API: triggers, MIDI map, rhythm
  *                       selection, tempo and mix controls
+ *   --panel             verify the panel state snapshot and lamp flash counter
  *   --pattern           verify the 20 patterns, combination and timing
  *   --rhythms [dir]     render all 20 rhythms and two combinations to WAV
  *   --help              this text
@@ -1886,6 +1887,154 @@ static int command_api(void)
     return failures == 0 ? 0 : 1;
 }
 
+static int command_panel(void)
+{
+    mp7_context *ctx = context_new();
+    mp7_panel_state state;
+    unsigned int guard;
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_get_panel_state(ctx, &state);
+    if ((state.bank != MP7_BANK_A) || (state.buttons != 0u) || state.pending ||
+        state.running || (state.column != 0u) || (state.flash_count != 0u)) {
+        fail("the initial panel state is not the defaults");
+    } else {
+        ok("mp7_get_panel_state() reports the initial defaults");
+    }
+
+    mp7_get_panel_state(0, &state);
+    if ((state.bank != MP7_BANK_A) || (state.pending_bank != MP7_BANK_A) ||
+        state.pending || state.running || (state.buttons != 0u)) {
+        fail("a null context does not yield a zeroed panel state");
+    } else {
+        ok("a null context yields a zeroed panel state");
+    }
+
+    /* The applied selection reports its bank and button mask. */
+    mp7_set_rhythm(ctx, MP7_BANK_B, 1u);
+    mp7_get_panel_state(ctx, &state);
+    if ((state.bank != MP7_BANK_B) || (state.buttons != 1u) || state.pending ||
+        !state.running || (ctx->sequencer.selected != ((uint32_t)1u << 10))) {
+        fail("the panel state does not report the applied bank/buttons");
+    } else {
+        ok("the panel state reports the applied bank and buttons");
+    }
+
+    /* Queued selections are visible separately from the applied one. */
+    mp7_queue_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_get_panel_state(ctx, &state);
+    if (!state.pending || (state.pending_bank != MP7_BANK_A) ||
+        (state.pending_buttons != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1)) ||
+        (state.bank != MP7_BANK_B)) {
+        fail("the panel state does not report a queued selection");
+    } else {
+        ok("the panel state reports the queued selection");
+    }
+
+    /* A queued change becomes the applied selection at the cycle wrap. */
+    guard = 0u;
+    while ((ctx->sequencer.pending_valid != 0u) && (guard++ < 300000u)) {
+        mp7_pattern_tick(ctx);
+    }
+    mp7_get_panel_state(ctx, &state);
+    if (state.pending || (state.bank != MP7_BANK_A) ||
+        (state.buttons != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1))) {
+        fail("the queued selection was not applied to the panel state");
+    } else {
+        ok("the queued selection becomes the applied panel state");
+    }
+
+    /* A stop keeps the lever/button indication but stops the transport and
+     * cancels any further queued change. */
+    mp7_stop_rhythms(ctx);
+    mp7_get_panel_state(ctx, &state);
+    if (state.running || state.pending || (state.bank != MP7_BANK_A) ||
+        (state.buttons != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1))) {
+        fail("mp7_stop_rhythms() did not leave the expected panel state");
+    } else {
+        ok("mp7_stop_rhythms() keeps the bank/button indication");
+    }
+
+    /* Flash counter: one flash at column 31 and one at the cycle wrap. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_rhythm(ctx, MP7_BANK_A,
+                   mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    guard = 0u;
+    while ((ctx->sequencer.column != 31u) && (guard++ < 300000u)) {
+        mp7_pattern_tick(ctx);
+    }
+    mp7_get_panel_state(ctx, &state);
+    if ((ctx->sequencer.column != 31u) || (state.flash_count != 1u)) {
+        fail("the lamp did not flash at the second half of the grid");
+    } else {
+        ok("the lamp flashes at the second half of the grid");
+    }
+
+    guard = 0u;
+    while ((ctx->sequencer.column != 0u) && (guard++ < 300000u)) {
+        mp7_pattern_tick(ctx);
+    }
+    mp7_get_panel_state(ctx, &state);
+    if ((ctx->sequencer.column != 0u) || (state.flash_count != 2u)) {
+        fail("the lamp did not flash at the cycle wrap");
+    } else {
+        ok("the lamp flashes at the cycle wrap");
+    }
+
+    /* The counter survives a stop; it is only reset by init/reset. */
+    mp7_stop_rhythms(ctx);
+    mp7_get_panel_state(ctx, &state);
+    if (state.running || (state.flash_count != 2u)) {
+        fail("mp7_stop_rhythms() reset the lamp flash counter");
+    } else {
+        ok("the lamp flash counter survives a stop");
+    }
+
+    mp7_reset(ctx);
+    mp7_get_panel_state(ctx, &state);
+    if (state.flash_count != 0u) {
+        fail("mp7_reset() did not reset the lamp flash counter");
+    } else {
+        ok("mp7_reset() resets the lamp flash counter");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_get_panel_state(ctx, &state);
+    if (state.flash_count != 0u) {
+        fail("mp7_init() did not reset the lamp flash counter");
+    } else {
+        ok("mp7_init() resets the lamp flash counter");
+    }
+
+    /* A queued change that only moves the lever is applied too: the
+     * no-button layer is the same on both banks, so the rhythm mask does
+     * not change, but the bank indication still has to follow the lever. */
+    mp7_set_rhythm(ctx, MP7_BANK_A, 0u);
+    mp7_queue_rhythm(ctx, MP7_BANK_B, 0u);
+    mp7_get_panel_state(ctx, &state);
+    if (!state.pending || (state.pending_bank != MP7_BANK_B) ||
+        (state.buttons != 0u) || (state.bank != MP7_BANK_A)) {
+        fail("a queued lever change is not reported as pending");
+    } else {
+        ok("a queued lever change is reported as pending");
+    }
+
+    guard = 0u;
+    while ((ctx->sequencer.pending_valid != 0u) && (guard++ < 300000u)) {
+        mp7_pattern_tick(ctx);
+    }
+    mp7_get_panel_state(ctx, &state);
+    if (state.pending || (state.bank != MP7_BANK_B) || (state.buttons != 0u) ||
+        !state.running) {
+        fail("a queued lever change was not applied to the panel state");
+    } else {
+        ok("a queued lever change becomes the applied panel state");
+    }
+
+    free(ctx);
+    return failures == 0 ? 0 : 1;
+}
+
 static void usage(const char *program)
 {
     printf("usage: %s <command>\n\n", program);
@@ -1902,6 +2051,7 @@ static void usage(const char *program)
            "  --mixer            verify pan, Volume, Balance and direct gains\n"
            "  --api              verify triggers, MIDI map, rhythm selection, tempo\n"
            "                     and the panel mix controls\n"
+           "  --panel            verify the panel state snapshot and lamp counter\n"
            "  --pattern          verify the factory patterns, combination and timing\n"
            "  --rhythms [dir]    render all 20 rhythms and two combinations to WAV\n"
            "                     files (default dir: build)\n"
@@ -1954,6 +2104,9 @@ int main(int argc, char **argv)
     }
     if (strcmp(command, "--api") == 0) {
         return command_api();
+    }
+    if (strcmp(command, "--panel") == 0) {
+        return command_panel();
     }
     if (strcmp(command, "--pattern") == 0) {
         return command_pattern();

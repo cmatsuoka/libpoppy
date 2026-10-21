@@ -65,6 +65,22 @@ mp7_trigger_note(ctx, 36, 100);             /* bass drum */
 mp7_trigger_note(ctx, 74, 0);               /* note-off (Guiro is the gated voice) */
 ```
 
+The panel state is available for a UI or lamp driver without callbacks:
+
+```c
+mp7_panel_state state;
+mp7_get_panel_state(ctx, &state);
+
+/* stopped: light the lens for state.bank; running: pulse it when
+ * state.flash_count advances. */
+```
+
+`mp7_panel_state` carries the applied bank and button mask, any queued
+selection, the transport state, the current grid column and a monotonic lamp
+flash counter. The flash counter advances at the same two grid points as the
+reference unit (the first enabled column at or after column 31, and the cycle
+wrap). The host owns the visible pulse length; the library supplies the events.
+
 The Guiro is the only gated voice. Its gate is shared between the pattern
 player and the note you trigger yourself: the voice sounds while either one
 holds it, so a note you hold is not cut off by the pattern, the pattern is not
@@ -90,5 +106,6 @@ thread is blocked, or from the audio thread itself.
 ./mp7_test --quijada          # verify Quijada frequencies, thresholds and comparator
 ./mp7_test --mixer            # verify pan, Volume, Balance and direct gains
 ./mp7_test --api              # verify triggers, MIDI map, rhythms, tempo
+./mp7_test --panel            # verify the panel state snapshot and lamp counter
 ./mp7_test --pattern          # verify the 20 patterns, combination and timing
 ./mp7_test --rhythms dir      # render all 20 rhythms and two combinations
