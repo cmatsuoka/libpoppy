@@ -39,7 +39,9 @@ LIB_SRCS  := $(wildcard src/*.c)
 TEST_SRCS := $(wildcard test/*.c)
 LIB_OBJS  := $(patsubst src/%.c,$(BUILD)/src/%.o,$(LIB_SRCS))
 TEST_OBJS := $(patsubst test/%.c,$(BUILD)/test/%.o,$(TEST_SRCS))
-EXAMPLES := $(filter-out examples/play_rhythm.c,$(wildcard examples/*.c))
+# examples/dinghy_app.c is built inside a Dinghy checkout, not here.
+EXAMPLE_SKIP := examples/play_rhythm.c examples/dinghy_app.c
+EXAMPLES := $(filter-out $(EXAMPLE_SKIP),$(wildcard examples/*.c))
 EXAMPLE_OBJS := $(patsubst examples/%.c,$(BUILD)/examples/%.o,$(EXAMPLES))
 
 OPENAL_CFLAGS := $(shell pkg-config --cflags openal 2>/dev/null)
