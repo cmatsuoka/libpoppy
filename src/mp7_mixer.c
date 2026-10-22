@@ -2,8 +2,10 @@
  * mp7_mixer.c - the shared stereo mixer core.
  *
  * This file belongs to the SHARED layer: every symbol here is named poppy_*
- * so a future instrument variant can link it unchanged. It applies the
- * per-voice pan, the master Volume, Balance and the direct-percussion gains.
+ * so a future instrument variant can reuse it without a rename. The mixer
+ * state holds one gain per instrument channel, so the shared core is compiled
+ * against the variant's instrument count. It applies the per-voice pan, the
+ * master Volume, Balance and the per-instrument gains.
  *
  * There is deliberately no master soft clip: soft clip is a per-voice
  * transfer curve in the noise engine. The only output-stage protection is the
@@ -46,8 +48,10 @@ void poppy_mixer_init(struct poppy_mixer *mixer)
     mixer->balance_a_gain_q16 = POPPY_Q16_ONE;
     mixer->balance_b_gain_q16 = POPPY_Q16_ONE;
 
-    for (i = 0u; i < POPPY_MIXER_DIRECT_COUNT; i++) {
-        mixer->direct_gain_q16[i] = POPPY_Q16_ONE / 2;
+    /* The generic default is unity; the variant applies its panel-specific
+     * defaults after this call. */
+    for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        mixer->instr_gain_q16[i] = POPPY_Q16_ONE;
     }
 }
 
@@ -66,14 +70,14 @@ void poppy_mixer_set_balance(struct poppy_mixer *mixer, int32_t balance_q16)
                                              POPPY_MIX_GROUP_B);
 }
 
-void poppy_mixer_set_direct_gain(struct poppy_mixer *mixer,
-                                 unsigned int index,
-                                 int32_t gain_q16)
+void poppy_mixer_set_instr_gain(struct poppy_mixer *mixer,
+                                unsigned int instr,
+                                int32_t gain_q16)
 {
-    if (index >= POPPY_MIXER_DIRECT_COUNT) {
+    if (instr >= (unsigned int)MP7_INSTR_COUNT) {
         return;
     }
-    mixer->direct_gain_q16[index] = poppy_clamp_i32(gain_q16, 0, POPPY_Q16_ONE);
+    mixer->instr_gain_q16[instr] = poppy_clamp_i32(gain_q16, 0, POPPY_Q16_ONE);
 }
 
 /* Balance gain for one of the two groups.

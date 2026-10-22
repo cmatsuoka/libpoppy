@@ -61,7 +61,8 @@ void fm1_panel_volume(uint16_t position)
     mp7_set_volume(fm1_context, (int32_t)value_q16);
 }
 
-/* Balance and the three Additional Volume faders are linear over 0..1. */
+/* Balance and the instrument gains are linear over 0..1. The panel provides
+ * three Additional Volume faders for Tambourine, Guiro and Quijada. */
 void fm1_panel_balance(uint16_t position)
 {
     uint32_t p = (position > FM1_POSITION_MAX) ? FM1_POSITION_MAX : position;
@@ -70,7 +71,7 @@ void fm1_panel_balance(uint16_t position)
     mp7_set_balance(fm1_context, balance_q16);
 }
 
-void fm1_panel_perc_gain(mp7_instr instr, uint16_t position)
+void fm1_panel_instr_gain(mp7_instr instr, uint16_t position)
 {
     uint32_t p = (position > FM1_POSITION_MAX) ? FM1_POSITION_MAX : position;
     int32_t gain_q16 = (int32_t)(((uint32_t)p * 65536u) / FM1_POSITION_MAX);

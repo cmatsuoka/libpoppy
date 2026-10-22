@@ -14,7 +14,7 @@
  *   --noise             verify the 6 noise voices are uncorrelated
  *   --guiro             verify Guiro gate hold and note-off release
  *   --quijada           verify Quijada frequencies, thresholds and comparator
- *   --mixer             verify pan, Volume, Balance and direct gains
+ *   --mixer             verify pan, Volume, Balance and instrument gains
  *   --api               verify the public API: triggers, MIDI map, rhythm
  *                       selection, tempo and mix controls
  *   --panel             verify the panel state snapshot and lamp flash counter
@@ -1147,16 +1147,23 @@ static int command_mixer(void)
         return 1;
     }
 
-    /* Defaults: Volume 1.0 (master gain 0.5), Balance centre, each direct
-     * gain at its 0.5 default. */
+    /* Defaults: Volume 1.0 (master gain 0.5), Balance centre, instrument
+     * gains at 0.5 for the three Additional Volume faders and 1.0 elsewhere. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
     if ((ctx->mixer.panel_volume_q16 != POPPY_Q16_ONE) ||
         (ctx->mixer.balance_q16 != POPPY_Q16_ONE / 2)) {
         fail("the mixer defaults are not Volume 1.0 / Balance 0.5");
     }
-    for (i = 0u; i < POPPY_MIXER_DIRECT_COUNT; i++) {
-        if (ctx->mixer.direct_gain_q16[i] != POPPY_Q16_ONE / 2) {
-            fail("a direct gain does not default to 0.5");
+    for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        int32_t expected = POPPY_Q16_ONE;
+
+        if ((i == (unsigned int)MP7_INSTR_TAMBOURINE) ||
+            (i == (unsigned int)MP7_INSTR_GUIRO) ||
+            (i == (unsigned int)MP7_INSTR_QUIJADA)) {
+            expected = POPPY_Q16_ONE / 2;
+        }
+        if (ctx->mixer.instr_gain_q16[i] != expected) {
+            fail("an instrument gain does not have its panel default");
             break;
         }
     }
@@ -1168,7 +1175,7 @@ static int command_mixer(void)
         }
     }
     if (failures == 0) {
-        ok("the mixer defaults to Volume 1.0, Balance 0.5 and direct gain 0.5");
+        ok("the mixer defaults to Volume 1.0, Balance 0.5 and panel gains");
     }
 
     /* A centred voice appears equally in both channels, and a hard pan sends
@@ -1376,69 +1383,92 @@ static int command_mixer(void)
         }
     }
 
-    /* The three direct-percussion gains multiply their own voice only. */
+    /* A per-instrument gain multiplies its own voice only. */
     render_trigger(ctx, MP7_INSTR_TAMBOURINE, stereo, frames);
     {
         int tamb_default = channel_peak(stereo, frames, 0u);
         int tamb_full;
 
         mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-        poppy_mixer_set_direct_gain(&ctx->mixer, MP7_DIRECT_TAMBOURINE,
-                                    POPPY_Q16_ONE);
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_TAMBOURINE,
+                                   POPPY_Q16_ONE);
         mp7_voice_trigger(&ctx->voices[MP7_INSTR_TAMBOURINE]);
         mp7_process(ctx, stereo, frames);
         tamb_full = channel_peak(stereo, frames, 0u);
 
         if ((tamb_default == 0) || (tamb_full < tamb_default + tamb_default / 2)) {
-            printf("FAIL: the Tambourine direct gain does not scale its voice\n");
+            printf("FAIL: the Tambourine instrument gain does not scale its voice\n");
             failures++;
         } else {
-            ok("the Tambourine direct gain scales its voice");
+            ok("the Tambourine instrument gain scales its voice");
         }
 
         mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-        poppy_mixer_set_direct_gain(&ctx->mixer, MP7_DIRECT_TAMBOURINE, 0);
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_TAMBOURINE, 0);
         mp7_voice_trigger(&ctx->voices[MP7_INSTR_TAMBOURINE]);
         mp7_process(ctx, stereo, frames);
         if (!stereo_is_silent(stereo, frames)) {
-            fail("a zero direct gain does not silence its voice");
+            fail("a zero instrument gain does not silence its voice");
         } else {
-            ok("a zero direct gain silences its voice");
+            ok("a zero instrument gain silences its voice");
         }
     }
 
+    /* Muting an active voice must not freeze it: unmuting mid-hit has to
+     * sound the same as if the voice had never been muted. */
     {
-        static const mp7_instr direct_voices[3] = {
-            MP7_INSTR_TAMBOURINE, MP7_INSTR_GUIRO, MP7_INSTR_QUIJADA
-        };
-        static const unsigned int direct_index[3] = {
-            MP7_DIRECT_TAMBOURINE, MP7_DIRECT_GUIRO, MP7_DIRECT_QUIJADA
-        };
+        const size_t half = frames / 4u;
+        struct mp7_context_s *ref = context_new();
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_CYMBAL_1, 0);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_CYMBAL_1]);
+        mp7_process(ctx, stereo, half); /* the muted first half */
+
+        mp7_init(ref, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_instr_gain(&ref->mixer, MP7_INSTR_CYMBAL_1,
+                                   POPPY_Q16_ONE);
+        mp7_voice_trigger(&ref->voices[MP7_INSTR_CYMBAL_1]);
+        mp7_process(ref, other, half); /* the reference first half, discarded */
+
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_CYMBAL_1,
+                                   POPPY_Q16_ONE);
+        mp7_process(ctx, stereo, half);
+        mp7_process(ref, other, half);
+
+        if (memcmp(stereo, other, half * 2u * sizeof(int16_t)) != 0) {
+            fail("muting an active voice changed its envelope or filter state");
+        } else {
+            ok("a muted active voice keeps advancing its state");
+        }
+
+        free(ref);
+    }
+
+    {
         unsigned int v;
 
-        for (v = 0u; v < 3u; v++) {
+        for (v = 0u; v < (unsigned int)MP7_INSTR_COUNT; v++) {
             mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-            poppy_mixer_set_direct_gain(&ctx->mixer, direct_index[v], 0);
-            mp7_voice_trigger(&ctx->voices[direct_voices[v]]);
+            poppy_mixer_set_instr_gain(&ctx->mixer, v, 0);
+            mp7_voice_trigger(&ctx->voices[v]);
             mp7_process(ctx, stereo, frames);
             if (!stereo_is_silent(stereo, frames)) {
-                printf("FAIL: direct gain %u did not silence its voice\n", v);
+                printf("FAIL: instrument gain %u did not silence its voice\n", v);
                 failures++;
             }
         }
 
-        /* A non-direct voice must not be affected by the direct gains. */
+        /* One instrument's gain must not change another voice. */
         render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
         mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-        for (v = 0u; v < 3u; v++) {
-            poppy_mixer_set_direct_gain(&ctx->mixer, direct_index[v], 0);
-        }
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_SNARE_1, 0);
         mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
         mp7_process(ctx, other, frames);
         if (memcmp(stereo, other, frames * 2u * sizeof(int16_t)) != 0) {
-            fail("the direct gains changed a non-direct voice");
+            fail("an instrument gain changed another voice");
         } else {
-            ok("the direct gains affect only Tambourine, Guiro and Quijada");
+            ok("instrument gains are independent across all 15 instruments");
         }
     }
 
@@ -1902,7 +1932,7 @@ static int command_api(void)
         ok("mp7_set_tempo() clamps to 1..240 and builds the sub-step");
     }
 
-    /* Mix controls, including the direct-gain restrictions. */
+    /* Mix controls. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
     mp7_set_volume(ctx, 500000);
     if (ctx->mixer.panel_volume_q16 != 4 * POPPY_Q16_ONE) {
@@ -1919,32 +1949,51 @@ static int command_api(void)
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
     mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 100000);
-    if (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE) {
+    if (ctx->mixer.instr_gain_q16[MP7_INSTR_QUIJADA] != POPPY_Q16_ONE) {
         fail("mp7_set_instr_gain() does not clamp Quijada to 1.0");
     }
     mp7_set_instr_gain(ctx, MP7_INSTR_GUIRO, -1);
-    if (ctx->mixer.direct_gain_q16[MP7_DIRECT_GUIRO] != 0) {
+    if (ctx->mixer.instr_gain_q16[MP7_INSTR_GUIRO] != 0) {
         fail("mp7_set_instr_gain() does not clamp Guiro to 0");
     }
-    mp7_set_instr_gain(ctx, MP7_INSTR_BASS, 0);
-    if (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE) {
-        fail("mp7_set_instr_gain() changed a voice with no panel fader");
+    for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        mp7_set_instr_gain(ctx, (mp7_instr)i, 0);
+        if (ctx->mixer.instr_gain_q16[i] != 0) {
+            fail("mp7_set_instr_gain() did not map an instrument");
+            break;
+        }
     }
     if (failures == 0) {
-        ok("mp7_set_instr_gain() maps only Tambourine, Guiro and Quijada");
+        ok("mp7_set_instr_gain() maps and clamps all instruments");
     }
 
     /* Reset restores the panel defaults. */
     mp7_reset(ctx);
-    if ((ctx->mixer.panel_volume_q16 != POPPY_Q16_ONE) ||
-        (ctx->mixer.balance_q16 != POPPY_Q16_ONE / 2) ||
-        (ctx->mixer.direct_gain_q16[MP7_DIRECT_TAMBOURINE] != POPPY_Q16_ONE / 2) ||
-        (ctx->mixer.direct_gain_q16[MP7_DIRECT_GUIRO] != POPPY_Q16_ONE / 2) ||
-        (ctx->mixer.direct_gain_q16[MP7_DIRECT_QUIJADA] != POPPY_Q16_ONE / 2) ||
-        (ctx->sequencer.tempo != 120u) || mp7_rhythm_running(ctx)) {
-        fail("mp7_reset() did not restore the panel defaults");
-    } else {
-        ok("mp7_reset() restores the panel defaults");
+    {
+        int gain_bad = 0;
+
+        for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+            int32_t expected = POPPY_Q16_ONE;
+
+            if ((i == (unsigned int)MP7_INSTR_TAMBOURINE) ||
+                (i == (unsigned int)MP7_INSTR_GUIRO) ||
+                (i == (unsigned int)MP7_INSTR_QUIJADA)) {
+                expected = POPPY_Q16_ONE / 2;
+            }
+            if (ctx->mixer.instr_gain_q16[i] != expected) {
+                gain_bad = 1;
+                break;
+            }
+        }
+
+        if (gain_bad ||
+            (ctx->mixer.panel_volume_q16 != POPPY_Q16_ONE) ||
+            (ctx->mixer.balance_q16 != POPPY_Q16_ONE / 2) ||
+            (ctx->sequencer.tempo != 120u) || mp7_rhythm_running(ctx)) {
+            fail("mp7_reset() did not restore the panel defaults");
+        } else {
+            ok("mp7_reset() restores the panel defaults");
+        }
     }
 
     free(ctx);
@@ -2112,7 +2161,7 @@ static void usage(const char *program)
            "                     (default dir: build)\n"
            "  --noise            verify the 6 noise voices are uncorrelated\n"
            "  --guiro            verify Guiro gate hold and note-off release\n"
-           "  --mixer            verify pan, Volume, Balance and direct gains\n"
+           "  --mixer            verify pan, Volume, Balance and instrument gains\n"
            "  --api              verify triggers, MIDI map, rhythm selection, tempo\n"
            "                     and the panel mix controls\n"
            "  --panel            verify the panel state snapshot and lamp counter\n"

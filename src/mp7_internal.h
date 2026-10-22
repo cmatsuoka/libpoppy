@@ -166,16 +166,15 @@ enum mp7_engine {
 };
 
 /* Global mix controls. The master volume is the panel value (0..4); the mixer
- * applies the 0.5 factor itself. The direct gains are the three
- * Additional Volume faders, in Tambourine/Guiro/Quijada order. */
-#define POPPY_MIXER_DIRECT_COUNT 3
-
+ * applies the 0.5 factor itself. The instrument gains apply to every voice;
+ * Tambourine, Guiro and Quijada default to 0.5 (their panel Additional Volume
+ * faders) and the remaining instruments default to 1.0. */
 struct poppy_mixer {
     int32_t panel_volume_q16; /* the panel Volume, 0..4; the mixer applies 0.5x */
     int32_t balance_q16;
     int32_t balance_a_gain_q16; /* cached, recomputed on a Balance change */
     int32_t balance_b_gain_q16;
-    int32_t direct_gain_q16[POPPY_MIXER_DIRECT_COUNT];
+    int32_t instr_gain_q16[MP7_INSTR_COUNT];
 };
 
 /* Balance touches exactly two groups: Bass Drum against Hihat/Cymbal 1/Cymbal 2.
@@ -185,11 +184,6 @@ enum poppy_mix_group {
     POPPY_MIX_GROUP_A,
     POPPY_MIX_GROUP_B
 };
-
-#define MP7_DIRECT_TAMBOURINE 0u
-#define MP7_DIRECT_GUIRO 1u
-#define MP7_DIRECT_QUIJADA 2u
-#define MP7_DIRECT_INDEX_NONE 0xFFu
 
 /* One voice. The union is not used; the engines share the named fields so the
  * dispatch stays readable, at the cost of a few unused bytes per voice. */
@@ -215,7 +209,6 @@ struct mp7_voice {
     int32_t level_q16;      /* fixed per-voice Level, Q16 */
     int32_t pan_q16;        /* fixed per-voice Pan, Q16 (32768 = centre) */
     uint8_t balance_group;  /* enum poppy_mix_group */
-    uint8_t direct_gain_index; /* index into mixer.direct_gain_q16, or none */
     uint32_t prng;          /* xorshift32 state, never zero */
     int32_t last_rate;      /* Guiro rate-oscillator sign detector */
     int32_t prev_clock;     /* Quijada comparator history, Q30 */
@@ -287,7 +280,7 @@ struct mp7_context_s {
  *
  * A trigger carries no velocity: the panel has no velocity control and the
  * level that reaches the output is the voice's own Level, times the Balance
- * or direct gain, times the master Volume. */
+ * and per-instrument gain, times the master Volume. */
 void mp7_voice_init_all(struct mp7_context_s *ctx);
 void mp7_voice_trigger(struct mp7_voice *voice);
 void mp7_voice_release(struct mp7_voice *voice);
@@ -330,9 +323,9 @@ int64_t poppy_softclip_q31(int64_t sample_q31);
 void poppy_mixer_init(struct poppy_mixer *mixer);
 void poppy_mixer_set_volume(struct poppy_mixer *mixer, int32_t panel_volume_q16);
 void poppy_mixer_set_balance(struct poppy_mixer *mixer, int32_t balance_q16);
-void poppy_mixer_set_direct_gain(struct poppy_mixer *mixer,
-                                 unsigned int index,
-                                 int32_t gain_q16);
+void poppy_mixer_set_instr_gain(struct poppy_mixer *mixer,
+                                unsigned int instr,
+                                int32_t gain_q16);
 int32_t poppy_mixer_balance_gain_q16(const struct poppy_mixer *mixer,
                                      unsigned int group);
 int64_t poppy_mixer_pan_left(int64_t sample_q31, int32_t pan_q16);

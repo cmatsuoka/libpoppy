@@ -5,7 +5,7 @@
  * values below are compiled in. Frequencies are in Hz, times in microseconds,
  * and resonance in Q8.8. Level and Pan are fixed here as well, but they are
  * mixer inputs rather than synthesis parameters: the mixer applies them
- * together with the panel's Volume, Balance and direct gains.
+ * together with the panel's Volume, Balance and per-instrument gains.
  */
 
 #include <string.h>
@@ -85,7 +85,6 @@ static void voice_setup(struct mp7_voice *voice,
     voice->level_q16 = POPPY_Q16_ONE;
     voice->pan_q16 = POPPY_Q16_ONE / 2;
     voice->balance_group = POPPY_MIX_GROUP_NONE;
-    voice->direct_gain_index = MP7_DIRECT_INDEX_NONE;
 
     switch (instr) {
     case MP7_INSTR_BASS:
@@ -95,15 +94,6 @@ static void voice_setup(struct mp7_voice *voice,
     case MP7_INSTR_CYMBAL_1:
     case MP7_INSTR_CYMBAL_2:
         voice->balance_group = POPPY_MIX_GROUP_B;
-        break;
-    case MP7_INSTR_TAMBOURINE:
-        voice->direct_gain_index = MP7_DIRECT_TAMBOURINE;
-        break;
-    case MP7_INSTR_GUIRO:
-        voice->direct_gain_index = MP7_DIRECT_GUIRO;
-        break;
-    case MP7_INSTR_QUIJADA:
-        voice->direct_gain_index = MP7_DIRECT_QUIJADA;
         break;
     default:
         break;

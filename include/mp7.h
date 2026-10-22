@@ -250,9 +250,9 @@ void mp7_get_panel_state(const void *ctx,
  * Balance is 0..1 (0..65536), default 0.5; it crossfades the Bass Drum
  * against Hihat/Cymbal 1/Cymbal 2 only.
  *
- * instr_gain is the Additional Volume fader for Tambourine, Guiro and
- * Quijada only: 0..1, default 0.5. Any other instrument is ignored (it has
- * no corresponding panel fader). */
+ * instr_gain is a per-instrument gain: 0..1. Tambourine, Guiro and Quijada
+ * default to 0.5, matching their panel Additional Volume faders; every other
+ * instrument defaults to 1.0. */
 void mp7_set_volume(mp7_context ctx, int32_t volume_q16);
 void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr,

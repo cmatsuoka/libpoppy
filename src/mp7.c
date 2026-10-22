@@ -52,6 +52,15 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
     mp7_voice_init_all(c);
     mp7_pattern_init(c);
     poppy_mixer_init(&c->mixer);
+
+    /* The panel's three Additional Volume faders start at 0.5; every other
+     * instrument starts at unity. */
+    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_TAMBOURINE,
+                               POPPY_Q16_ONE / 2);
+    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_GUIRO,
+                               POPPY_Q16_ONE / 2);
+    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_QUIJADA,
+                               POPPY_Q16_ONE / 2);
 }
 
 void mp7_set_sample_rate(mp7_context ctx, uint32_t sample_rate)
@@ -91,8 +100,8 @@ void mp7_reset(mp7_context ctx)
     mp7_init(ctx, sample_rate);
 }
 
-/* Effective per-voice gain: its fixed Level, scaled by Balance or by the
- * direct-percussion gain when the voice belongs to one of those controls. */
+/* Effective per-voice gain: its fixed Level, scaled by Balance and by the
+ * per-instrument gain. */
 static int32_t voice_gain_q16(const struct mp7_context_s *c,
                               const struct mp7_voice *voice)
 {
@@ -101,11 +110,7 @@ static int32_t voice_gain_q16(const struct mp7_context_s *c,
     gain = poppy_mul_q16(gain,
                          poppy_mixer_balance_gain_q16(&c->mixer,
                                                       voice->balance_group));
-
-    if (voice->direct_gain_index != MP7_DIRECT_INDEX_NONE) {
-        gain = poppy_mul_q16(gain,
-                             c->mixer.direct_gain_q16[voice->direct_gain_index]);
-    }
+    gain = poppy_mul_q16(gain, c->mixer.instr_gain_q16[voice->instr]);
 
     return gain;
 }
@@ -142,9 +147,16 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
         mp7_pattern_tick(c);
 
         for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-            const struct mp7_voice *voice = &c->voices[instr];
-            int64_t sample = mp7_voice_process(&c->voices[instr]);
+            struct mp7_voice *voice = &c->voices[instr];
+            int64_t sample;
 
+            /* An idle voice has no envelope or filter state left to
+             * advance, so skip the engine call entirely. */
+            if (!voice->active) {
+                continue;
+            }
+
+            sample = mp7_voice_process(voice);
             if (sample == 0) {
                 continue;
             }
@@ -375,28 +387,12 @@ void mp7_set_balance(mp7_context ctx, int32_t balance_q16)
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    unsigned int index;
 
     if (!context_valid(c)) {
         return;
     }
 
-    switch (instr) {
-    case MP7_INSTR_TAMBOURINE:
-        index = MP7_DIRECT_TAMBOURINE;
-        break;
-    case MP7_INSTR_GUIRO:
-        index = MP7_DIRECT_GUIRO;
-        break;
-    case MP7_INSTR_QUIJADA:
-        index = MP7_DIRECT_QUIJADA;
-        break;
-    default:
-        /* No Additional Volume fader for this instrument on the panel. */
-        return;
-    }
-
-    poppy_mixer_set_direct_gain(&c->mixer, index, gain_q16);
+    poppy_mixer_set_instr_gain(&c->mixer, (unsigned int)instr, gain_q16);
 }
 
 void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)

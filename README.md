@@ -49,11 +49,12 @@ int16_t block[128 * 2];
 mp7_process(ctx, block, 128);      /* from the audio ISR */
 ```
 
-Only the panel controls are exposed: master Volume, Balance,
-the Quijada/Guiro/Tambourine Additional Volume faders, tempo and rhythm
-selection. Synthesis parameters (frequency, envelope times, filter settings
-and so on) are fixed constants inside the engines. Gains are linear Q16
-values: 1.0 is `65536`.
+Only the panel controls are exposed, plus a per-instrument gain: master
+Volume, Balance, instrument gain, tempo and rhythm selection. The instrument
+gain defaults to 0.5 for Tambourine, Guiro and Quijada (the panel's Additional
+Volume faders) and to 1.0 for every other instrument. Synthesis parameters
+(frequency, envelope times, filter settings and so on) are fixed constants
+inside the engines. Gains are linear Q16 values: 1.0 is `65536`.
 
 Rhythm selection mirrors the panel: a bank A/B switch and a 10-bit mask of
 the pressed rhythm buttons. A button mask of 0 means no button is pressed.
