@@ -1,5 +1,7 @@
 # libpoppy - a vintage drum machine engine library
 
+*This library is under development and the API may be slightly unstable.*
+
 A small (just a few dozen kilobytes), lightweight, target-agnostic **C,
 integer-only, 32-bit fixed-point** audio library that implements the 15 voices
 of a well-known vintage drum machine and its 20 built-in rhythm patterns.
