@@ -326,7 +326,7 @@ int main(int argc, char **argv)
     }
 
     mp7_set_tempo(ctx, (uint16_t)tempo);
-    mp7_set_rhythm(ctx, bank, buttons);
+    mp7_select_rhythm(ctx, bank, buttons);
 
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);

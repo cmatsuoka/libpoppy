@@ -206,7 +206,8 @@ void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity)
 }
 
 /* The panel has one bank lever and ten buttons. Derive the internal absolute
- * rhythm mask from them; bits 10..15 of the button mask do not exist. */
+ * rhythm mask from them; bits 10..14 of the button mask do not exist, and bit
+ * 15 is the apply flag rather than a button. */
 static uint32_t rhythm_selection(mp7_bank bank, uint16_t buttons)
 {
     uint32_t button_mask = (uint32_t)buttons & 0x03FFu;
@@ -214,10 +215,11 @@ static uint32_t rhythm_selection(mp7_bank bank, uint16_t buttons)
     return (bank == MP7_BANK_B) ? (button_mask << 10) : button_mask;
 }
 
-void mp7_set_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
+void mp7_select_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
+    int apply_next = (buttons & MP7_APPLY_NEXT_CYCLE) != 0u;
     uint32_t selected;
     int was_running;
 
@@ -230,6 +232,25 @@ void mp7_set_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
     was_running = (c->sequencer.running != 0u);
 
     c->sequencer.running = 1u;
+
+    /* There is no current cycle to finish when the sequencer is stopped, so a
+     * deferred selection takes effect immediately and starts the transport. */
+    if (apply_next && was_running) {
+        c->sequencer.pending_selected = selected;
+        c->sequencer.pending_bank = (uint8_t)bank;
+        c->sequencer.pending_buttons = button_mask;
+
+        /* A change is pending when the rhythm mask or the panel indication
+         * changes. The two are not the same thing: the no-button layer is the
+         * same on both banks, so a lever change alone would not show up in the
+         * mask, yet the bank lamp still has to follow it. */
+        c->sequencer.pending_valid =
+            ((selected != c->sequencer.selected) ||
+             ((uint8_t)bank != c->sequencer.bank) ||
+             (button_mask != c->sequencer.buttons)) ? 1u : 0u;
+        return;
+    }
+
     c->sequencer.bank = (uint8_t)bank;
     c->sequencer.buttons = button_mask;
     c->sequencer.pending_bank = (uint8_t)bank;
@@ -240,39 +261,6 @@ void mp7_set_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
     if ((selected != c->sequencer.selected) || !was_running) {
         mp7_pattern_combine(c, selected);
     }
-}
-
-void mp7_queue_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
-{
-    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
-    uint32_t selected;
-
-    if (c == 0) {
-        return;
-    }
-
-    bank = (bank == MP7_BANK_B) ? MP7_BANK_B : MP7_BANK_A;
-    selected = rhythm_selection(bank, button_mask);
-
-    /* There is no current cycle to finish when the sequencer is stopped. */
-    if (c->sequencer.running == 0u) {
-        mp7_set_rhythm(ctx, bank, button_mask);
-        return;
-    }
-
-    c->sequencer.pending_selected = selected;
-    c->sequencer.pending_bank = (uint8_t)bank;
-    c->sequencer.pending_buttons = button_mask;
-
-    /* A change is pending when the rhythm mask or the panel indication
-     * changes. The two are not the same thing: the no-button layer is the
-     * same on both banks, so a lever change alone would not show up in the
-     * mask, yet the bank lamp still has to follow it. */
-    c->sequencer.pending_valid =
-        ((selected != c->sequencer.selected) ||
-         ((uint8_t)bank != c->sequencer.bank) ||
-         (button_mask != c->sequencer.buttons)) ? 1u : 0u;
 }
 
 void mp7_stop_rhythms(mp7_context ctx)

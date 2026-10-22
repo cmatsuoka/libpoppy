@@ -887,11 +887,11 @@ static int command_pattern(void)
      * sub-step boundary. March 2/4 disables columns 6 and 7 and hits Snare 2
      * on column 8. */
     mp7_init(ctx, sample_rate);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     ctx->sequencer.column = 6u;
     ctx->sequencer.substep = 0u;
     ctx->sequencer.sub_step_pos = 0u;
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
     mp7_pattern_tick(ctx);
     if ((ctx->voices[MP7_INSTR_SNARE_2].active == 0u) ||
         (ctx->sequencer.column != 8u)) {
@@ -1593,7 +1593,7 @@ static int command_api(void)
     /* The Guiro gate has two holders: the pattern's own gate and the note
      * the caller triggers. Neither one may cut the other off. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_trigger(ctx, MP7_INSTR_GUIRO, 100u);
     {
         const size_t column_samples = 3u * (size_t)ctx->sequencer.sub_step_samples;
@@ -1614,7 +1614,7 @@ static int command_api(void)
     }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_pattern_tick(ctx); /* column 0 opens the pattern's gate */
     mp7_trigger(ctx, MP7_INSTR_GUIRO, 0u);
     if (ctx->voices[MP7_INSTR_GUIRO].amp_env.stage == POPPY_ENV_RELEASE) {
@@ -1624,7 +1624,7 @@ static int command_api(void)
     }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_pattern_tick(ctx); /* column 0 opens the pattern's gate */
     {
         unsigned int sample;
@@ -1652,15 +1652,14 @@ static int command_api(void)
         fail("the sequencer is running before the first selection");
     }
 
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
     if (!mp7_rhythm_running(ctx) ||
         (ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ))) {
         fail("the Waltz button did not select Waltz in bank A");
     }
 
-    mp7_set_rhythm(ctx, MP7_BANK_A,
-                   mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
-                       mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+        mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) | mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
     if ((ctx->sequencer.selected !=
          (mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
           mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4))) ||
@@ -1668,8 +1667,8 @@ static int command_api(void)
         fail("two buttons in one bank did not combine their rhythms");
     }
 
-    /* Keys 10..15 do not exist: they are ignored. */
-    mp7_set_rhythm(ctx, MP7_BANK_A, 0xFC00u);
+    /* Keys 10..14 do not exist: they are ignored. */
+    mp7_select_rhythm(ctx, MP7_BANK_A, 0x7C00u);
     if ((ctx->sequencer.selected != 0u) ||
         (ctx->sequencer.enable != ~(uint64_t)0)) {
         fail("button-mask bits above button 9 are not ignored");
@@ -1701,11 +1700,11 @@ static int command_api(void)
 
     /* The same button in bank B selects the corresponding upper-bank rhythm. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_B, 1u);
+    mp7_select_rhythm(ctx, MP7_BANK_B, 1u);
     if (ctx->sequencer.selected != ((uint32_t)1u << 10)) {
         fail("bank B button 0 did not select Jazz Waltz");
     }
-    mp7_set_rhythm(ctx, MP7_BANK_A, 1u);
+    mp7_select_rhythm(ctx, MP7_BANK_A, 1u);
     if (ctx->sequencer.selected != 1u) {
         fail("bank A button 0 did not select Waltz");
     } else {
@@ -1715,7 +1714,8 @@ static int command_api(void)
     /* An immediate change keeps the playhead. Selecting no buttons keeps the
      * transport running and leaves only the Tambourine/Guiro/Quijada layer. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+                      mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     {
         uint8_t column;
         uint8_t substep;
@@ -1731,9 +1731,8 @@ static int command_api(void)
         substep = ctx->sequencer.substep;
         position = ctx->sequencer.sub_step_pos;
 
-        mp7_set_rhythm(ctx, MP7_BANK_A,
-                       mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
-                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+            mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
 
         if ((ctx->sequencer.column != column) ||
             (ctx->sequencer.substep != substep) ||
@@ -1747,7 +1746,7 @@ static int command_api(void)
             ok("an immediate rhythm change preserves the playhead");
         }
 
-        mp7_set_rhythm(ctx, MP7_BANK_A, 0u); /* no button pressed */
+        mp7_select_rhythm(ctx, MP7_BANK_A, 0u); /* no button pressed */
 
         if ((ctx->sequencer.column != column) ||
             (ctx->sequencer.substep != substep) ||
@@ -1779,7 +1778,7 @@ static int command_api(void)
     /* The no-button layer triggers Tambourine and Guiro at column 0 and leaves
      * the main instruments silent. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, 0u);
+    mp7_select_rhythm(ctx, MP7_BANK_A, 0u);
     mp7_pattern_tick(ctx);
     if ((ctx->voices[MP7_INSTR_TAMBOURINE].active == 0u) ||
         (ctx->voices[MP7_INSTR_GUIRO].active == 0u) ||
@@ -1792,7 +1791,7 @@ static int command_api(void)
 
     /* A queued change waits for the pattern cycle to wrap. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     {
         unsigned int t;
 
@@ -1800,9 +1799,8 @@ static int command_api(void)
             mp7_pattern_tick(ctx);
         }
 
-        mp7_queue_rhythm(ctx, MP7_BANK_A,
-                         mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
-                             mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+            mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) | MP7_APPLY_NEXT_CYCLE);
         if ((ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1)) ||
             (ctx->sequencer.pending_valid == 0u) ||
             (ctx->sequencer.pending_selected !=
@@ -1839,22 +1837,24 @@ static int command_api(void)
     /* A queued selection replaces any earlier pending selection; an immediate
      * set cancels it. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_pattern_tick(ctx);
-    mp7_queue_rhythm(ctx, MP7_BANK_A,
-                     mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
-                         mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
-                         mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
-    mp7_queue_rhythm(ctx, MP7_BANK_A,
-                     mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
-                         mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+        mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+        mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+        mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA) |
+        MP7_APPLY_NEXT_CYCLE);
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+        mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+        mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA) |
+        MP7_APPLY_NEXT_CYCLE);
     if ((ctx->sequencer.pending_selected !=
          (mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
           mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA))) ||
         (ctx->sequencer.pending_valid == 0u)) {
         fail("a later queued selection did not replace the pending one");
     }
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     if (ctx->sequencer.pending_valid != 0u) {
         fail("an immediate selection did not cancel the pending change");
     } else {
@@ -1862,9 +1862,9 @@ static int command_api(void)
     }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_pattern_tick(ctx);
-    mp7_queue_rhythm(ctx, MP7_BANK_A, 0u); /* queue the no-button layer */
+    mp7_select_rhythm(ctx, MP7_BANK_A, MP7_APPLY_NEXT_CYCLE); /* queue the no-button layer */
     if ((ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1)) ||
         (ctx->sequencer.pending_valid == 0u) ||
         (ctx->sequencer.pending_selected != 0u)) {
@@ -1893,9 +1893,10 @@ static int command_api(void)
 
     /* An immediate stop cancels a pending change and resets the transport. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     mp7_pattern_tick(ctx);
-    mp7_queue_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+        mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) | MP7_APPLY_NEXT_CYCLE);
     mp7_stop_rhythms(ctx);
     if (mp7_rhythm_running(ctx) ||
         (ctx->sequencer.pending_valid != 0u) ||
@@ -1908,7 +1909,8 @@ static int command_api(void)
 
     /* Queueing while stopped has no cycle to wait for, so it starts now. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_queue_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+        mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) | MP7_APPLY_NEXT_CYCLE);
     if ((ctx->sequencer.selected != mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ)) ||
         (ctx->sequencer.pending_valid != 0u) ||
         !mp7_rhythm_running(ctx)) {
@@ -1918,7 +1920,7 @@ static int command_api(void)
     }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_queue_rhythm(ctx, MP7_BANK_A, 0u);
+    mp7_select_rhythm(ctx, MP7_BANK_A, MP7_APPLY_NEXT_CYCLE);
     if (!mp7_rhythm_running(ctx) || (ctx->sequencer.selected != 0u) ||
         (ctx->sequencer.enable != ~(uint64_t)0)) {
         fail("queueing no buttons while stopped did not start the percussion layer");
@@ -2035,7 +2037,7 @@ static int command_panel(void)
     }
 
     /* The applied selection reports its bank and button mask. */
-    mp7_set_rhythm(ctx, MP7_BANK_B, 1u);
+    mp7_select_rhythm(ctx, MP7_BANK_B, 1u);
     mp7_get_panel_state(ctx, &state);
     if ((state.bank != MP7_BANK_B) || (state.buttons != 1u) || state.pending ||
         !state.running || (ctx->sequencer.selected != ((uint32_t)1u << 10))) {
@@ -2045,7 +2047,8 @@ static int command_panel(void)
     }
 
     /* Queued selections are visible separately from the applied one. */
-    mp7_queue_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A,
+        mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) | MP7_APPLY_NEXT_CYCLE);
     mp7_get_panel_state(ctx, &state);
     if (!state.pending || (state.pending_bank != MP7_BANK_A) ||
         (state.pending_buttons != mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1)) ||
@@ -2081,8 +2084,7 @@ static int command_panel(void)
 
     /* Flash counter: one flash at column 31 and one at the cycle wrap. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-    mp7_set_rhythm(ctx, MP7_BANK_A,
-                   mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
     guard = 0u;
     while ((ctx->sequencer.column != 31u) && (guard++ < 300000u)) {
         mp7_pattern_tick(ctx);
@@ -2133,8 +2135,8 @@ static int command_panel(void)
     /* A queued change that only moves the lever is applied too: the
      * no-button layer is the same on both banks, so the rhythm mask does
      * not change, but the bank indication still has to follow the lever. */
-    mp7_set_rhythm(ctx, MP7_BANK_A, 0u);
-    mp7_queue_rhythm(ctx, MP7_BANK_B, 0u);
+    mp7_select_rhythm(ctx, MP7_BANK_A, 0u);
+    mp7_select_rhythm(ctx, MP7_BANK_B, MP7_APPLY_NEXT_CYCLE);
     mp7_get_panel_state(ctx, &state);
     if (!state.pending || (state.pending_bank != MP7_BANK_B) ||
         (state.buttons != 0u) || (state.bank != MP7_BANK_A)) {

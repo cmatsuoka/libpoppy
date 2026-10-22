@@ -128,17 +128,11 @@ void fm1_panel_tempo(uint16_t position)
 
 /* Rhythm selection: bank lever plus the ten latched buttons. Bit k of
  * `buttons` is panel button k; buttons = 0 means no button is pressed and
- * keeps the fixed percussion layer running. */
+ * keeps the fixed percussion layer running. OR MP7_APPLY_NEXT_CYCLE into
+ * `buttons` to apply the change at the next pattern cycle instead of now. */
 void fm1_panel_rhythm(mp7_bank bank, uint16_t buttons)
 {
-    mp7_set_rhythm(fm1_context, bank, buttons);
-}
-
-/* The same bank/button selection, applied when the current pattern cycle
- * ends. */
-void fm1_panel_rhythm_at_cycle(mp7_bank bank, uint16_t buttons)
-{
-    mp7_queue_rhythm(fm1_context, bank, buttons);
+    mp7_select_rhythm(fm1_context, bank, buttons);
 }
 
 void fm1_panel_stop(void)

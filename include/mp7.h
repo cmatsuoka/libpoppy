@@ -75,6 +75,11 @@ typedef enum {
     MP7_BANK_B = 1
 } mp7_bank;
 
+/* Schedule flags for mp7_select_rhythm(), OR-ed into the button mask.
+ * MP7_APPLY_NOW is zero, so the immediate case needs no flag. */
+#define MP7_APPLY_NOW 0x0000u
+#define MP7_APPLY_NEXT_CYCLE 0x8000u
+
 /* The opaque context. */
 typedef void *mp7_context;
 
@@ -156,35 +161,36 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames);
  * does not restart the ratchet. */
 void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity);
 
-/* Select the pressed rhythm buttons immediately.
+/* Select the pressed rhythm buttons.
  *
  * `bank` is the Rhythm Section Control Lever position. `buttons` is a mask of
- * the ten physical rhythm buttons: bit k is button k (0..9), and bits 10..15
+ * the ten physical rhythm buttons: bit k is button k (0..9), and bits 10..14
  * are ignored. Several buttons in the same bank are OR-ed together, so a
  * selection can never mix bank A and bank B.
+ *
+ * OR MP7_APPLY_NEXT_CYCLE into `buttons` to apply the selection at the next
+ * pattern cycle instead of immediately. MP7_APPLY_NOW is zero, so the plain
+ * button mask means "apply now":
+ *
+ * - With MP7_APPLY_NOW the selection takes effect at the current playhead
+ *   position, without restarting the pattern, and cancels any pending change.
+ * - With MP7_APPLY_NEXT_CYCLE the current cycle finishes with the old
+ *   selection; the new selection is applied when the last enabled column wraps
+ *   to the first, and starts from its first enabled column. A later
+ *   MP7_APPLY_NEXT_CYCLE call replaces an earlier pending selection.
  *
  * buttons = 0 means no button is pressed. The sequencer keeps running in that
  * case: the main rhythm instruments fall silent and the fixed
  * Tambourine/Guiro/Quijada layer continues.
  *
- * The playhead is preserved: the new grid takes effect where the current one
- * is playing, without restarting the pattern. Calling this starts the
- * sequencer if it was stopped. */
-void mp7_set_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons);
-
-/* Queue the same bank/button selection for the next pattern cycle.
+ * With either flag, a call starts the sequencer if it was stopped, and a
+ * selection made while it is stopped takes effect immediately.
  *
- * While the sequencer is running, the current cycle finishes with the old
- * selection; the new selection is applied when the last enabled column wraps
- * to the first, and starts from its first enabled column. If the sequencer is
- * stopped, the selection takes effect immediately and starts it. An immediate
- * mp7_set_rhythm() cancels a pending change.
- *
- * A change that only moves the lever is queued and applied like any other:
+ * A deferred change that only moves the lever is applied like any other:
  * with no rhythm button pressed both banks play the same percussion layer,
  * so the rhythm does not change, but the bank indication still follows the
  * lever at the cycle wrap. */
-void mp7_queue_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons);
+void mp7_select_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons);
 
 /* Stop the sequencer immediately (the panel's Stop switch): silence, reset the
  * playhead and cancel any pending change. The last bank/button selection is
@@ -197,17 +203,17 @@ void mp7_set_tempo(mp7_context ctx, uint16_t bpm);
 
 /* True while the sequencer transport is running, including the no-key case
  * where only the fixed percussion layer plays. False after mp7_stop_rhythms()
- * or before the first mp7_set_rhythm()/mp7_queue_rhythm(). */
+ * or before the first mp7_select_rhythm(). */
 bool mp7_rhythm_running(const void *ctx);
 
 /* A snapshot of the panel state for a host UI.
  *
- * `bank` and `buttons` are the selection last applied by mp7_set_rhythm() or
- * by a queued change at the cycle wrap. `buttons` is the ten-button mask (bits
- * 10..15 are always clear). The selection is retained across
+ * `bank` and `buttons` are the selection last applied by mp7_select_rhythm()
+ * or by a pending change at the cycle wrap. `buttons` is the ten-button mask
+ * (bits 10..15 are always clear). The selection is retained across
  * mp7_stop_rhythms(), which only stops the transport.
  *
- * `pending_*` describe a selection queued with mp7_queue_rhythm() and not yet
+ * `pending_*` describe a selection made with MP7_APPLY_NEXT_CYCLE and not yet
  * applied; they are meaningful only when `pending` is true.
  *
  * `column` is the current grid column, 0..63. `flash_count` is a monotonic

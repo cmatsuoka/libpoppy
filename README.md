@@ -60,8 +60,10 @@ Volume faders) and to 1.0 for every other instrument. Synthesis parameters
 inside the engines. Gains are linear Q16 values: 1.0 is `65536`.
 
 Rhythm selection mirrors the panel: a bank A/B switch and a 10-bit mask of
-the pressed rhythm buttons. A button mask of 0 means no button is pressed.
-Use `mp7_stop_rhythms()` to stop the player.
+the pressed rhythm buttons. A selection applies immediately by default; OR
+`MP7_APPLY_NEXT_CYCLE` into the mask to defer it to the next pattern cycle. A
+button mask of 0 means no button is pressed. Use `mp7_stop_rhythms()` to stop
+the player.
 
 ```c
 mp7_set_volume(ctx, 65536);                 /* panel 1.0 -> 0.5x master gain */
@@ -69,16 +71,17 @@ mp7_set_balance(ctx, 32768);                /* center */
 mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 65536);
 mp7_set_tempo(ctx, 120);
 
-/* Bank A, Waltz + Samba buttons latched. */
-mp7_set_rhythm(ctx, MP7_BANK_A,
+/* Bank A, Waltz + Samba buttons latched, applied now. */
+mp7_select_rhythm(ctx, MP7_BANK_A,
     mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
     mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
 
 /* Switch to bank B button 0 (Jazz Waltz) at the next cycle. */
-mp7_queue_rhythm(ctx, mp7_rhythm_bank(MP7_RHYTHM_JAZZ_WALTZ),
-    mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ));
+mp7_select_rhythm(ctx, mp7_rhythm_bank(MP7_RHYTHM_JAZZ_WALTZ),
+    mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ) | MP7_APPLY_NEXT_CYCLE);
 
-mp7_set_rhythm(ctx, MP7_BANK_A, 0);        /* no buttons: percussion only */
+/* no buttons: percussion only, applied now */
+mp7_select_rhythm(ctx, MP7_BANK_A, 0);
 ```
 
 The panel state is available for a UI or lamp driver without callbacks:
@@ -91,7 +94,7 @@ mp7_get_panel_state(ctx, &state);
  * state.flash_count advances. */
 ```
 
-`struct mp7_panel_state` carries the applied bank and button mask, any queued
+`struct mp7_panel_state` carries the applied bank and button mask, any pending
 selection, the transport state, the current grid column and a monotonic lamp
 flash counter. The flash counter advances on two grid points: the first
 enabled column at or after column 31, and the cycle wrap. The host owns the
