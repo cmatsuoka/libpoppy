@@ -3,8 +3,8 @@
  *
  * This file is not part of libpoppy. It shows the shape of the glue code:
  *
- *   1. At startup, reserve one context in static RAM, using
- *      mp7_context_size(), and call mp7_init().
+ *   1. At startup, create one context with mp7_create_context(), and release
+ *      it again with mp7_destroy_context() when the instrument is shut down.
  *   2. In the audio ISR, render one half-buffer of 128 stereo frames with
  *      mp7_process() and hand it to the I2S DMA.
  *   3. From the control loop, translate the panel/encoder positions to the
@@ -28,12 +28,32 @@
 static mp7_context fm1_context;
 static int16_t *fm1_half_buffer;
 
-void fm1_audio_init(void *context_memory, int16_t *half_buffer, uint32_t sample_rate)
+void fm1_audio_deinit(void);
+
+/* Returns 0 on success, -1 when the context could not be allocated. A failed
+ * init leaves the wrapper in the state the ISR handles by rendering silence. */
+int fm1_audio_init(int16_t *half_buffer, uint32_t sample_rate)
 {
-    fm1_context = context_memory;
     fm1_half_buffer = half_buffer;
 
-    mp7_init(fm1_context, sample_rate);
+    /* A second init must not leak the first context. */
+    fm1_audio_deinit();
+
+    fm1_context = mp7_create_context(sample_rate);
+    if (fm1_context == 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+/* Release the context. The wrapper can be re-initialized afterwards. */
+void fm1_audio_deinit(void)
+{
+    if (fm1_context != 0) {
+        mp7_destroy_context(fm1_context);
+        fm1_context = 0;
+    }
 }
 
 /* Audio ISR: called once per half-buffer. Nothing here allocates, blocks or
@@ -41,10 +61,12 @@ void fm1_audio_init(void *context_memory, int16_t *half_buffer, uint32_t sample_
  * mp7_process() overwrites it with interleaved stereo Q15 samples. */
 void fm1_audio_isr(void)
 {
-    if ((fm1_context == 0) || (fm1_half_buffer == 0)) {
+    if (fm1_half_buffer == 0) {
         return;
     }
 
+    /* A null context is not an error here: mp7_process() clears the buffer,
+     * so the DMA reads silence instead of whatever was in the buffer. */
     mp7_process(fm1_context, fm1_half_buffer, FM1_BLOCK_FRAMES);
 
     /* The driver now hands fm1_half_buffer to the I2S DMA. On the FM-1 the

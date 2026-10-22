@@ -319,13 +319,12 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    ctx = malloc(mp7_context_size());
+    ctx = mp7_create_context(SAMPLE_RATE);
     if (ctx == NULL) {
-        perror("malloc");
+        fprintf(stderr, "%s: out of memory\n", argv[0]);
         return 1;
     }
 
-    mp7_init(ctx, SAMPLE_RATE);
     mp7_set_tempo(ctx, (uint16_t)tempo);
     mp7_set_rhythm(ctx, bank, buttons);
 
@@ -334,6 +333,6 @@ int main(int argc, char **argv)
 
     status = play(ctx);
 
-    free(ctx);
+    mp7_destroy_context(ctx);
     return status;
 }

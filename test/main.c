@@ -79,7 +79,8 @@ static void ok(const char *what)
 
 static struct mp7_context_s *context_new(void)
 {
-    struct mp7_context_s *ctx = (struct mp7_context_s *)malloc(mp7_context_size());
+    struct mp7_context_s *ctx =
+        (struct mp7_context_s *)malloc(sizeof(struct mp7_context_s));
 
     if (ctx == 0) {
         printf("FAIL: out of memory\n");
@@ -92,7 +93,8 @@ static int command_init(void)
 {
     struct mp7_context_s *ctx = context_new();
 
-    printf("context size        : %lu bytes\n", (unsigned long)mp7_context_size());
+    printf("context size        : %lu bytes\n",
+           (unsigned long)sizeof(struct mp7_context_s));
     printf("default sample rate : %u Hz\n", (unsigned)MP7_DEFAULT_SAMPLE_RATE);
 
     mp7_init(ctx, 0);
@@ -191,7 +193,7 @@ static int command_sine(void)
     {
         const char *table = (const char *)poppy_sine;
         const char *ctx_start = (const char *)ctx;
-        const char *ctx_end = ctx_start + mp7_context_size();
+        const char *ctx_end = ctx_start + sizeof(struct mp7_context_s);
 
         if ((table >= ctx_start) && (table < ctx_end)) {
             fail("the sine table lives inside the context");
@@ -1486,6 +1488,65 @@ static int command_api(void)
     };
     struct mp7_context_s *ctx = context_new();
     unsigned int i;
+
+    /* The allocation helper initializes the context and can be released. */
+    {
+        struct mp7_context_s *created =
+            (struct mp7_context_s *)mp7_create_context(0);
+        struct mp7_context_s *second =
+            (struct mp7_context_s *)mp7_create_context(22050);
+        int16_t block[64 * 2];
+
+        if ((created == 0) ||
+            (created->magic != MP7_CONTEXT_MAGIC) ||
+            (created->sample_rate != MP7_DEFAULT_SAMPLE_RATE)) {
+            fail("mp7_create_context() did not initialize a default-rate context");
+        } else {
+            ok("mp7_create_context() allocates and initializes a context");
+        }
+
+        if ((second == 0) || (second->sample_rate != 22050u)) {
+            fail("mp7_create_context() did not take the requested sample rate");
+        } else {
+            ok("mp7_create_context() takes the requested sample rate");
+        }
+
+        /* Two contexts live at the same time and do not disturb each other. */
+        if ((created != 0) && (second != 0) &&
+            (created->sample_rate == MP7_DEFAULT_SAMPLE_RATE) &&
+            (second->sample_rate == 22050u)) {
+            ok("two contexts live at the same time with their own settings");
+        } else {
+            fail("two live contexts do not keep their own settings");
+        }
+
+        /* A created context renders audio like any other. */
+        if (created != 0) {
+            int non_zero = 0;
+
+            memset(block, 0, sizeof(block));
+            mp7_trigger((mp7_context)created, MP7_INSTR_BASS, 100);
+            mp7_process((mp7_context)created, block, 64);
+            for (i = 0u; i < 64u * 2u; i++) {
+                if (block[i] != 0) {
+                    non_zero = 1;
+                    break;
+                }
+            }
+            if (!non_zero) {
+                fail("a created context renders no audio");
+            } else {
+                ok("a created context renders audio");
+            }
+        }
+
+        mp7_destroy_context((mp7_context)second);
+        mp7_destroy_context((mp7_context)created);
+
+        /* A null context is ignored. */
+        mp7_destroy_context(0);
+        ok("mp7_destroy_context() ignores a null context");
+    }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
 

@@ -6,6 +6,7 @@
  * sums it into a stereo mix through the shared mixer core.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "mp7_internal.h"
@@ -27,11 +28,40 @@ static void clear_stereo(int16_t *stereo_out, size_t frames)
     }
 }
 
-size_t mp7_context_size(void)
+mp7_context mp7_create_context(uint32_t sample_rate)
 {
-    return sizeof(struct mp7_context_s);
+    struct mp7_context_s *c =
+        (struct mp7_context_s *)malloc(sizeof(struct mp7_context_s));
+
+    if (c == 0) {
+        return 0;
+    }
+
+    mp7_init((mp7_context)c, sample_rate);
+    return (mp7_context)c;
 }
 
+void mp7_destroy_context(mp7_context ctx)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    /* Only a context that mp7_create_context() built may be released here.
+     * The magic check keeps a foreign or uninitialized pointer out of
+     * free(). */
+    if (c->magic != MP7_CONTEXT_MAGIC) {
+        return;
+    }
+
+    c->magic = 0u;
+    free(ctx);
+}
+
+/* Prepare a context. Internal: mp7_create_context() and mp7_reset() drive
+ * it, and the public API has no other entry point. */
 void mp7_init(mp7_context ctx, uint32_t sample_rate)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
@@ -55,12 +85,9 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
 
     /* The panel's three Additional Volume faders start at 0.5; every other
      * instrument starts at unity. */
-    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_TAMBOURINE,
-                               POPPY_Q16_ONE / 2);
-    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_GUIRO,
-                               POPPY_Q16_ONE / 2);
-    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_QUIJADA,
-                               POPPY_Q16_ONE / 2);
+    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_TAMBOURINE, POPPY_Q16_ONE / 2);
+    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_GUIRO, POPPY_Q16_ONE / 2);
+    poppy_mixer_set_instr_gain(&c->mixer, MP7_INSTR_QUIJADA, POPPY_Q16_ONE / 2);
 }
 
 void mp7_set_sample_rate(mp7_context ctx, uint32_t sample_rate)

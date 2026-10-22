@@ -2,9 +2,9 @@
  * mp7_tables.c - flash-resident tables for the Mini Pops library.
  *
  * The sine table stores only the first quadrant, as a file-scope `const`
- * array in flash. The full period is rebuilt once, on the first mp7_init(),
- * into a table shared by every context, every voice and every future variant
- * of the library; no context carries a copy.
+ * array in flash. The full period is rebuilt once, on the first
+ * mp7_create_context(), into a table shared by every context, every voice and
+ * every future variant of the library; no context carries a copy.
  *
  * The stored values are exact: every entry equals
  *

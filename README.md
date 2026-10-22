@@ -5,7 +5,8 @@ integer-only, 32-bit fixed-point** audio library that implements the 15 voices
 of a well-known vintage drum machine and its 20 built-in rhythm patterns.
 
 The library renders a single stereo mix into a caller-supplied buffer. It does
-no allocation, no I/O and no floating point.
+no I/O and no floating point. Memory allocation happens only when a context is
+created and when the shared sine table is built on first use.
 
 ## Available rhythm patterns
 
@@ -41,11 +42,13 @@ disabled where the compiler supports the flags.
 ```c
 #include <mp7.h>
 
-mp7_context ctx = malloc(mp7_context_size());
-mp7_init(ctx, 44100);
+mp7_context ctx = mp7_create_context(44100);
+if (ctx == NULL) { /* out of memory */ }
 
 int16_t block[128 * 2];
 mp7_process(ctx, block, 128);      /* from the audio ISR */
+
+mp7_destroy_context(ctx);
 ```
 
 Only the panel controls are exposed, plus a per-instrument gain: master
@@ -93,7 +96,7 @@ mp7_get_panel_state(ctx, &state);
 selection, the transport state, the current grid column and a monotonic lamp
 flash counter. The flash counter advances on two grid points: the first
 enabled column at or after column 31, and the cycle wrap. The host owns the
-visible pulse length; the library supplies the events.
+visible pulse length and the library supplies the events.
 
 The Guiro is the only gated voice. Its gate is shared between the pattern
 player and the note you trigger yourself: the voice sounds while either one

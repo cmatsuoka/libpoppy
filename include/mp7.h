@@ -4,9 +4,9 @@
  * The Mini Pops is a 15-voice percussion unit. This library is a integer-only
  * (32-bit fixed point) reimplementation of its sound generation and its 20
  * factory rhythm patterns. It renders a single stereo mix into a caller-supplied
- * buffer. The first mp7_init() allocates and rebuilds the full-period sine table
- * from its flash-resident first quadrant; there is no other allocation, no I/O
- * and no floating point in the library.
+ * buffer. It has no I/O and no floating point. A context is created with
+ * mp7_create_context(), which also builds the shared full-period sine table on
+ * first use.
  */
 
 #ifndef MP7_H
@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-/* Sample rate used when the caller passes 0 to mp7_init() or
+/* Sample rate used when the caller passes 0 to mp7_create_context() or
  * mp7_set_sample_rate(). The FM-1 runs at 44100. */
 #define MP7_DEFAULT_SAMPLE_RATE 44100u
 
@@ -106,12 +106,16 @@ struct mp7_pattern_view {
     bool triplet;
 };
 
-/* Number of bytes needed for one context. */
-size_t mp7_context_size(void);
+/* Allocate and initialize a context. A sample_rate of 0 selects
+ * MP7_DEFAULT_SAMPLE_RATE. Returns NULL when the allocation fails.
+ *
+ * The caller owns the returned context and releases it with
+ * mp7_destroy_context(). */
+mp7_context mp7_create_context(uint32_t sample_rate);
 
-/* Initialize a context and reset its voices and sequencer. A sample_rate of
- * 0 selects MP7_DEFAULT_SAMPLE_RATE. */
-void mp7_init(mp7_context ctx, uint32_t sample_rate);
+/* Release a context returned by mp7_create_context(). A null context is
+ * ignored. Every context must be released exactly once. */
+void mp7_destroy_context(mp7_context ctx);
 
 /* Change the sample rate.
  *
@@ -214,8 +218,7 @@ bool mp7_rhythm_running(const void *ctx);
  * grid points: when the playhead reaches the first enabled column at or
  * after column 31 - the last column of the first 32-column half - and when
  * the playhead wraps back to the first enabled column. It never decreases, is
- * not reset by mp7_stop_rhythms(), and is reset only by
- * mp7_init()/mp7_reset().
+ * not reset by mp7_stop_rhythms(), and is reset only by mp7_reset().
  *
  * The host can drive the two pilot/tempo lamps from this snapshot: light the
  * lamp for `bank` while stopped; while running, pulse that lamp whenever
