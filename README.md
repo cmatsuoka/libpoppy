@@ -1,4 +1,4 @@
-# The Poppy library
+# libpoppy - a vintage drum machine library
 
 A small (just a few dozen kilobytes), lightweight, target-agnostic **C,
 integer-only, 32-bit fixed-point** audio library that implements the 15 voices
@@ -7,7 +7,7 @@ of a well-known vintage drum machine and its 20 built-in rhythm patterns.
 The library renders a single stereo mix into a caller-supplied buffer. It does
 no allocation, no I/O and no floating point.
 
-## Available rhythm patterns:
+## Available rhythm patterns
 
 There are two banks of preset rhythms. Bank A contains Waltz, Samba, Mambo, Rumba,
 Bossa Nova, Rock 1, Rock 3, March 2/4, and Swing. Bank B has Jazz Waltz, Meringue,
@@ -18,10 +18,9 @@ time.
 ## Build
 
 ```sh
-make            # builds libpoppy.a and mp7_test
+make            # builds libpoppy.a
 make check      # builds and runs the test harness
 make play       # builds the OpenAL rhythm player example
-make clean
 ```
 
 `make play` additionally needs OpenAL (`pkg-config openal`, or `-lopenal`).

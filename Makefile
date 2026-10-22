@@ -51,7 +51,7 @@ PLAY := $(BUILD)/examples/play_rhythm
 
 .PHONY: all check clean play
 
-all: $(LIB) $(TEST) $(EXAMPLE_OBJS)
+all: $(LIB)
 
 $(LIB): $(LIB_OBJS)
 	$(AR) rcs $@ $^

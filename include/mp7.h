@@ -235,8 +235,7 @@ struct mp7_panel_state {
  * nothing is written. A null or invalid context yields a zeroed snapshot
  * (bank A, not running). The library is not thread-safe: do not call this
  * while mp7_process() is running on another thread. */
-void mp7_get_panel_state(const void *ctx,
-                         struct mp7_panel_state *out);
+void mp7_get_panel_state(const void *ctx, struct mp7_panel_state *out);
 
 /* Global mix controls, mapping the panel's remaining faders.
  *
@@ -255,8 +254,7 @@ void mp7_get_panel_state(const void *ctx,
  * instrument defaults to 1.0. */
 void mp7_set_volume(mp7_context ctx, int32_t volume_q16);
 void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
-void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr,
-                        int32_t gain_q16);
+void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16);
 
 /* Copy a view of one factory rhythm into `out`. Out-of-range input yields
  * null pointers and a false triplet flag. */
