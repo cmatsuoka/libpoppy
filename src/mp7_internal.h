@@ -45,12 +45,12 @@
  * mp7_shared_percussion_notes; it is OR-ed into the combined grid and it is
  * what plays when no rhythm button is pressed.
  *
- * A rhythm whose 32-column half repeats to fill the 64-column cycle stores
- * only that half and sets notes_period to MP7_PATTERN_HALF_STEPS. A rhythm
- * that differs between the halves sets notes_period to MP7_PATTERN_STEPS.
- * Both periods are powers of two, so column c is notes[c & (period - 1)]. */
-#define MP7_PATTERN_STEPS 64
+ * A rhythm stores only the shortest period that repeats to fill the
+ * 64-column cycle and sets notes_period to that length. Every period is a
+ * power of two, so column c is notes[c & (period - 1)]. */
+#define MP7_PATTERN_QUARTER_STEPS 16
 #define MP7_PATTERN_HALF_STEPS 32
+#define MP7_PATTERN_STEPS 64
 
 /* The fixed Tambourine/Guiro/Quijada layer. It is present in every factory
  * rhythm and keeps playing when no rhythm key is pressed. */
@@ -66,7 +66,7 @@
 struct mp7_factory_rhythm {
     const uint16_t *notes; /* notes_period columns, bit n = instrument n plays */
     uint64_t enable;        /* bit c = column c is enabled */
-    uint8_t notes_period;   /* columns in notes: 32 or 64 */
+    uint8_t notes_period;   /* columns in notes: 16, 32 or 64 */
     uint8_t triplet;
 };
 

@@ -37,8 +37,8 @@
 #define MP7_LAMP_HALF_COLUMN 31u
 
 /* Both the rhythm grids and the shared percussion layer may store only a
- * 32-column period that repeats to fill the 64-column cycle. The period is
- * always a power of two, so masking wraps the column. */
+ * shorter period (16 or 32 columns) that repeats to fill the 64-column
+ * cycle. The period is always a power of two, so masking wraps the column. */
 static unsigned int wrap_column(unsigned int column, unsigned int period)
 {
     return column & (period - 1u);

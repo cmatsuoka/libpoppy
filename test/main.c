@@ -672,7 +672,7 @@ static int command_pattern(void)
 
     /* Check the enable masks by position, not just by their popcount. */
     if ((mp7_factory_rhythms[MP7_RHYTHM_WALTZ].enable !=
-         UINT64_C(0xFFF0F0FFFFF0F0FF)) ||
+         UINT64_C(0xFF0F0FFFFF0F0FFF)) ||
         (mp7_factory_rhythms[MP7_RHYTHM_MARCH_2_4].enable !=
          UINT64_C(0x3F3F3F3F3F3F3F3F)) ||
         (mp7_factory_rhythms[MP7_RHYTHM_SAMBA].enable != ~(uint64_t)0)) {
@@ -682,8 +682,14 @@ static int command_pattern(void)
     if ((mp7_factory_rhythms[MP7_RHYTHM_WALTZ].notes_period !=
          MP7_PATTERN_HALF_STEPS) ||
         (mp7_factory_rhythms[MP7_RHYTHM_SAMBA].notes_period !=
-         MP7_PATTERN_STEPS)) {
-        fail("the 32-column note periods are not marked correctly");
+         MP7_PATTERN_STEPS) ||
+        (mp7_factory_rhythms[MP7_RHYTHM_MARCH_2_4].notes_period !=
+         MP7_PATTERN_QUARTER_STEPS) ||
+        (mp7_factory_rhythms[MP7_RHYTHM_SLOW_ROCK].notes_period !=
+         MP7_PATTERN_QUARTER_STEPS) ||
+        (mp7_factory_rhythms[MP7_RHYTHM_MARCH_6_8].notes_period !=
+         MP7_PATTERN_QUARTER_STEPS)) {
+        fail("the stored note periods are not marked correctly");
     }
 
     if (failures == 0) {

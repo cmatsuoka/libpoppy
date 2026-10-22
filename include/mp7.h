@@ -84,8 +84,8 @@ typedef void *mp7_context;
  * `notes` is `notes_period` columns of 16-bit instrument masks: bit n is set
  * when instrument n (in mp7_instr order) plays in that column, so bit 0 is
  * the Bass Drum. It holds the rhythm's own twelve instruments, bits 0..11.
- * `notes_period` is 32 when the second half of the grid repeats the first,
- * otherwise 64. Column c of the 64-column cycle is
+ * `notes_period` is the shortest repeating period of the grid: 16, 32 or 64
+ * columns. Column c of the 64-column cycle is
  * `notes[c & (notes_period - 1)]`.
  *
  * `percussion` is the shared Tambourine/Guiro/Quijada layer,
