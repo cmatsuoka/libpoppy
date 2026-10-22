@@ -6,7 +6,8 @@ of a well-known vintage drum machine and its 20 built-in rhythm patterns.
 
 The library renders a single stereo mix into a caller-supplied buffer. It does
 no I/O and no floating point. Memory allocation happens only when a context is
-created and when the shared sine table is built on first use.
+created: the context itself, plus the shared sine table (built once per
+process).
 
 ## Available rhythm patterns
 
@@ -51,6 +52,10 @@ mp7_process(ctx, block, 128);      /* from the audio ISR */
 mp7_destroy_context(ctx);
 ```
 
+A context must be released exactly once. The handle cannot be validated, so
+releasing it twice is undefined behaviour; clear your own pointer after the
+release and a repeated teardown is a no-op.
+
 Only the panel controls are exposed, plus a per-instrument gain: master
 Volume, Balance, instrument gain, tempo and rhythm selection. The instrument
 gain defaults to 0.5 for Tambourine, Guiro and Quijada (the panel's Additional
@@ -78,8 +83,6 @@ mp7_queue_rhythm(ctx, mp7_rhythm_bank(MP7_RHYTHM_JAZZ_WALTZ),
     mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ));
 
 mp7_set_rhythm(ctx, MP7_BANK_A, 0);        /* no buttons: percussion only */
-mp7_trigger_note(ctx, 36, 100);             /* bass drum */
-mp7_trigger_note(ctx, 74, 0);               /* note-off (Guiro is the gated voice) */
 ```
 
 The panel state is available for a UI or lamp driver without callbacks:
@@ -105,5 +108,5 @@ cut off by your note-off, and a note that arrives while the gate is already
 open does not restart the ratchet.
 
 The library is not thread-safe: `mp7_process()` and the setters must not run at
-the same time. On the FM-1 the panel glue applies its changes while the audio
-thread is blocked, or from the audio thread itself.
+the same time, and `mp7_create_context()` / `mp7_destroy_context()` must not run
+at the same time as either.

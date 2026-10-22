@@ -179,18 +179,25 @@ static void rebuild_sine(int16_t *table)
 void poppy_sine_init(void)
 {
     static int initialized = 0;
+    int16_t *table;
 
     if (initialized) {
         return;
     }
     initialized = 1;
 
-    poppy_sine = (int16_t *)malloc((size_t)POPPY_SINE_TABLE_SIZE *
-                                   sizeof(int16_t));
-    if (poppy_sine == 0) {
+    table = (int16_t *)malloc((size_t)POPPY_SINE_TABLE_SIZE * sizeof(int16_t));
+    if (table == 0) {
+        /* The quadrant in flash is bit-exact with the full table, so the
+         * lookups fall back to it and the library still works. */
         return;
     }
-    rebuild_sine(poppy_sine);
+
+    /* The table is filled before it is published: a second thread that
+     * creates a context while this one is building must not find a
+     * half-written table. */
+    rebuild_sine(table);
+    poppy_sine = table;
 }
 
 /* Soft-clip transfer curve. Entry i corresponds to u = -1 + 2*i/255 and

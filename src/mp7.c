@@ -13,7 +13,7 @@
 
 /* The output buffer is cleared in bounded chunks so that the byte count
  * (frames * 2 channels * 2 bytes) cannot overflow size_t on a 32-bit
- * target: on pi32v2 a single memset of more than SIZE_MAX bytes would
+ * target. On pi32v2 a single memset of more than SIZE_MAX bytes would
  * wrap to a short length and leave stale samples in the buffer. */
 #define MP7_CLEAR_CHUNK_FRAMES 1024u
 
@@ -43,21 +43,8 @@ mp7_context mp7_create_context(uint32_t sample_rate)
 
 void mp7_destroy_context(mp7_context ctx)
 {
-    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-
-    if (c == 0) {
-        return;
-    }
-
-    /* Only a context that mp7_create_context() built may be released here.
-     * The magic check keeps a foreign or uninitialized pointer out of
-     * free(). */
-    if (c->magic != MP7_CONTEXT_MAGIC) {
-        return;
-    }
-
-    c->magic = 0u;
     free(ctx);
+    ctx = NULL;
 }
 
 /* Prepare a context. Internal: mp7_create_context() and mp7_reset() drive
@@ -78,7 +65,6 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
     }
     c->sample_rate = sample_rate;
 
-    c->magic = MP7_CONTEXT_MAGIC;
     mp7_voice_init_all(c);
     mp7_pattern_init(c);
     poppy_mixer_init(&c->mixer);
@@ -129,14 +115,11 @@ void mp7_reset(mp7_context ctx)
 
 /* Effective per-voice gain: its fixed Level, scaled by Balance and by the
  * per-instrument gain. */
-static int32_t voice_gain_q16(const struct mp7_context_s *c,
-                              const struct mp7_voice *voice)
+static int32_t voice_gain_q16(const struct mp7_context_s *c, const struct mp7_voice *voice)
 {
     int32_t gain = voice->level_q16;
 
-    gain = poppy_mul_q16(gain,
-                         poppy_mixer_balance_gain_q16(&c->mixer,
-                                                      voice->balance_group));
+    gain = poppy_mul_q16(gain, poppy_mixer_balance_gain_q16(&c->mixer, voice->balance_group));
     gain = poppy_mul_q16(gain, c->mixer.instr_gain_q16[voice->instr]);
 
     return gain;
@@ -199,34 +182,10 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
     }
 }
 
-/* Fixed factory MIDI note map, in mp7_instr order. */
-static const uint8_t mp7_instr_notes[MP7_INSTR_COUNT] = {
-    36u, /* Bass Drum */
-    40u, /* Snare 1 */
-    38u, /* Snare 2 */
-    60u, /* Small Bongo */
-    61u, /* Large Bongo */
-    64u, /* Conga */
-    56u, /* Cowbell */
-    75u, /* Claves */
-    42u, /* Hihat */
-    37u, /* Rimshot */
-    49u, /* Cymbal 1 */
-    57u, /* Cymbal 2 */
-    54u, /* Tambourine */
-    74u, /* Guiro */
-    79u  /* Quijada */
-};
-
-static int context_valid(const struct mp7_context_s *c)
-{
-    return (c != 0) && (c->magic == MP7_CONTEXT_MAGIC);
-}
-
 void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    if (!context_valid(c) || ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT)) {
+    if ((c == 0) || ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT)) {
         return;
     }
 
@@ -246,22 +205,6 @@ void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity)
     mp7_voice_trigger(&c->voices[instr]);
 }
 
-void mp7_trigger_note(mp7_context ctx, uint8_t note, uint8_t velocity)
-{
-    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    unsigned int instr;
-
-    if (!context_valid(c)) {
-        return;
-    }
-
-    for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-        if (mp7_instr_notes[instr] == note) {
-            mp7_trigger(ctx, (mp7_instr)instr, velocity);
-        }
-    }
-}
-
 /* The panel has one bank lever and ten buttons. Derive the internal absolute
  * rhythm mask from them; bits 10..15 of the button mask do not exist. */
 static uint32_t rhythm_selection(mp7_bank bank, uint16_t buttons)
@@ -278,7 +221,7 @@ void mp7_set_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
     uint32_t selected;
     int was_running;
 
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 
@@ -305,7 +248,7 @@ void mp7_queue_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
     uint16_t button_mask = (uint16_t)(buttons & 0x03FFu);
     uint32_t selected;
 
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 
@@ -335,7 +278,7 @@ void mp7_queue_rhythm(mp7_context ctx, mp7_bank bank, uint16_t buttons)
 void mp7_stop_rhythms(mp7_context ctx)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 
@@ -353,7 +296,7 @@ void mp7_stop_rhythms(mp7_context ctx)
 void mp7_set_tempo(mp7_context ctx, uint16_t bpm)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 
@@ -363,7 +306,7 @@ void mp7_set_tempo(mp7_context ctx, uint16_t bpm)
 bool mp7_rhythm_running(const void *ctx)
 {
     const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
-    return context_valid(c) && (c->sequencer.running != 0u);
+    return (c != 0) && (c->sequencer.running != 0u);
 }
 
 void mp7_get_panel_state(const void *ctx,
@@ -374,7 +317,7 @@ void mp7_get_panel_state(const void *ctx,
         return;
     }
 
-    if (!context_valid(c)) {
+    if (c == 0) {
         memset(out, 0, sizeof(*out));
         out->bank = MP7_BANK_A;
         out->pending_bank = MP7_BANK_A;
@@ -394,7 +337,7 @@ void mp7_get_panel_state(const void *ctx,
 void mp7_set_volume(mp7_context ctx, int32_t volume_q16)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 
@@ -404,7 +347,7 @@ void mp7_set_volume(mp7_context ctx, int32_t volume_q16)
 void mp7_set_balance(mp7_context ctx, int32_t balance_q16)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 
@@ -415,7 +358,7 @@ void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
 
-    if (!context_valid(c)) {
+    if (c == 0) {
         return;
     }
 

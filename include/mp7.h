@@ -114,7 +114,9 @@ struct mp7_pattern_view {
 mp7_context mp7_create_context(uint32_t sample_rate);
 
 /* Release a context returned by mp7_create_context(). A null context is
- * ignored. Every context must be released exactly once. */
+ * ignored. Every context must be released exactly once: the handle cannot be
+ * validated, so releasing it twice, or releasing a pointer that
+ * mp7_create_context() did not return, is undefined behaviour. */
 void mp7_destroy_context(mp7_context ctx);
 
 /* Change the sample rate.
@@ -123,7 +125,8 @@ void mp7_destroy_context(mp7_context ctx);
  * and the envelopes and filter state of any sounding voice are lost. */
 void mp7_set_sample_rate(mp7_context ctx, uint32_t sample_rate);
 
-/* Reset the voices and the sequencer, keeping the sample rate. */
+/* Reset the voices, the sequencer and the mix controls to their defaults,
+ * keeping the sample rate. */
 void mp7_reset(mp7_context ctx);
 
 /* Render `frames` stereo interleaved frames into `stereo_out`.
@@ -136,7 +139,8 @@ void mp7_reset(mp7_context ctx);
  * The library is not thread-safe: mp7_process() and the setters must never
  * run at the same time. A panel control that is changed from another thread
  * has to be applied while the audio thread is blocked, or from the audio
- * thread itself. */
+ * thread itself. mp7_create_context() and mp7_destroy_context() must not run
+ * at the same time either. */
 void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames);
 
 /* Trigger one instrument. `velocity` is 0..127; 0 means note-off.
@@ -151,13 +155,6 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames);
  * cut off by a note-off. A note that arrives while the gate is already open
  * does not restart the ratchet. */
 void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity);
-
-/* Trigger by MIDI note. The factory note map is fixed (bass drum 36,
- * snare 1 40, snare 2 38, small bongo 60, large bongo 61, conga 64,
- * cowbell 56, claves 75, hihat 42, rimshot 37, cymbal 1 49, cymbal 2 57,
- * tambourine 54, guiro 74, quijada 79). A note that is not mapped is
- * ignored. velocity = 0 sends note-off. */
-void mp7_trigger_note(mp7_context ctx, uint8_t note, uint8_t velocity);
 
 /* Select the pressed rhythm buttons immediately.
  *

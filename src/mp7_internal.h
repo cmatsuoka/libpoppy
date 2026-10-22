@@ -73,10 +73,6 @@ struct mp7_factory_rhythm {
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
 extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS];
 
-/* Marker written into a context by mp7_init(), so that a half-initialized
- * context can be spotted. mp7_create_context() writes it too. */
-#define MP7_CONTEXT_MAGIC 0x4D5037u /* "MP7" */
-
 /* First quadrant of the sine, Q15, for i = 0..1024. This is the only sine
  * data in the image, and it is shared by every context, every voice and every
  * future variant of the library. */
@@ -84,7 +80,9 @@ extern const int16_t poppy_sine_quad1[POPPY_SINE_QUAD_SIZE];
 
 /* The full 4096-entry period, allocated and rebuilt from poppy_sine_quad1
  * the first time a context is created. NULL until then (and if that
- * allocation fails, in which case lookups fall back to the quadrant). */
+ * allocation fails, in which case lookups fall back to the quadrant, which
+ * is bit-exact with the full table). The pointer is published only after the
+ * table is complete, so a lookup never sees a half-written table. */
 extern int16_t *poppy_sine;
 
 /* Allocate and rebuild the full sine period. Idempotent and meant to be
@@ -268,7 +266,6 @@ struct mp7_sequencer {
  * holds the gate; `guiro_open` says whether it is gated right now. */
 struct mp7_context_s {
     uint32_t sample_rate;                  /* Hz, never 0 after init */
-    uint32_t magic;                         /* MP7_CONTEXT_MAGIC once initialized */
     struct mp7_voice voices[MP7_INSTR_COUNT];
     struct mp7_sequencer sequencer;
     struct poppy_mixer mixer;

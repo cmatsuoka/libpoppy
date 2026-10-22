@@ -12,6 +12,12 @@
  *
  * The panel mappings below are placeholders for the FM-1's own control
  * surface. They are not part of the Mini Pops spec; see the panel page.
+ *
+ * The library is not thread-safe. The audio ISR must not run while the
+ * context is created or released, and the panel setters must not run while
+ * the ISR renders: the firmware has to stop the I2S DMA, or block the ISR,
+ * around fm1_audio_init() and fm1_audio_deinit(), and around every panel
+ * change.
  */
 
 #include <stddef.h>
@@ -31,7 +37,10 @@ static int16_t *fm1_half_buffer;
 void fm1_audio_deinit(void);
 
 /* Returns 0 on success, -1 when the context could not be allocated. A failed
- * init leaves the wrapper in the state the ISR handles by rendering silence. */
+ * init leaves the wrapper in the state the ISR handles by rendering silence.
+ *
+ * The ISR must not be running: the library is not thread-safe, and the
+ * context is created and released here. */
 int fm1_audio_init(int16_t *half_buffer, uint32_t sample_rate)
 {
     fm1_half_buffer = half_buffer;
@@ -47,7 +56,14 @@ int fm1_audio_init(int16_t *half_buffer, uint32_t sample_rate)
     return 0;
 }
 
-/* Release the context. The wrapper can be re-initialized afterwards. */
+/* Release the context. The wrapper can be re-initialized afterwards.
+ *
+ * The handle is cleared right after the release, so a second call is a no-op
+ * and the ISR never sees a dangling pointer. Any other copy of the handle
+ * the caller kept is stale, though: the library cannot validate a handle, so
+ * such a copy must not be released again.
+ *
+ * The ISR must not be running while the context is released. */
 void fm1_audio_deinit(void)
 {
     if (fm1_context != 0) {
@@ -128,10 +144,4 @@ void fm1_panel_rhythm_at_cycle(mp7_bank bank, uint16_t buttons)
 void fm1_panel_stop(void)
 {
     mp7_stop_rhythms(fm1_context);
-}
-
-/* Optional pad/keyboard input. */
-void fm1_panel_note(uint8_t note, uint8_t velocity)
-{
-    mp7_trigger_note(fm1_context, note, velocity);
 }

@@ -15,8 +15,8 @@
  *   --guiro             verify Guiro gate hold and note-off release
  *   --quijada           verify Quijada frequencies, thresholds and comparator
  *   --mixer             verify pan, Volume, Balance and instrument gains
- *   --api               verify the public API: triggers, MIDI map, rhythm
- *                       selection, tempo and mix controls
+ *   --api               verify the public API: triggers, rhythm selection,
+ *                       tempo and mix controls
  *   --panel             verify the panel state snapshot and lamp flash counter
  *   --pattern           verify the 20 patterns, combination and timing
  *   --rhythms [dir]     render all 20 rhythms and two combinations to WAV
@@ -102,12 +102,6 @@ static int command_init(void)
         fail("mp7_init(ctx, 0) did not select the default sample rate");
     } else {
         ok("mp7_init(ctx, 0) selects the default sample rate");
-    }
-
-    if (ctx->magic != MP7_CONTEXT_MAGIC) {
-        fail("context is not marked as initialized");
-    } else {
-        ok("context is marked as initialized");
     }
 
     mp7_set_sample_rate(ctx, 22050);
@@ -1482,10 +1476,6 @@ static int command_mixer(void)
 
 static int command_api(void)
 {
-    static const uint8_t midi_notes[MP7_INSTR_COUNT] = {
-        36u, 40u, 38u, 60u, 61u, 64u, 56u, 75u,
-        42u, 37u, 49u, 57u, 54u, 74u, 79u
-    };
     struct mp7_context_s *ctx = context_new();
     unsigned int i;
 
@@ -1498,7 +1488,6 @@ static int command_api(void)
         int16_t block[64 * 2];
 
         if ((created == 0) ||
-            (created->magic != MP7_CONTEXT_MAGIC) ||
             (created->sample_rate != MP7_DEFAULT_SAMPLE_RATE)) {
             fail("mp7_create_context() did not initialize a default-rate context");
         } else {
@@ -1579,45 +1568,6 @@ static int command_api(void)
             fail("mp7_get_factory_pattern() returned the wrong data");
         } else {
             ok("mp7_get_factory_pattern() returns the factory data");
-        }
-    }
-
-    /* MIDI note map: each factory note triggers exactly its instrument. */
-    {
-        int bad = 0;
-
-        for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
-            unsigned int j;
-
-            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-            mp7_trigger_note(ctx, midi_notes[i], 100u);
-
-            for (j = 0u; j < (unsigned int)MP7_INSTR_COUNT; j++) {
-                int expected = ((unsigned int)j == i) ? 1 : 0;
-
-                if ((int)ctx->voices[j].active != expected) {
-                    bad = 1;
-                }
-            }
-            if (bad) {
-                printf("FAIL: MIDI note %u did not trigger exactly instrument %u\n",
-                       (unsigned int)midi_notes[i], i);
-                break;
-            }
-        }
-
-        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-        mp7_trigger_note(ctx, 1u, 100u);
-        for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
-            if (ctx->voices[i].active != 0u) {
-                bad = 1;
-            }
-        }
-
-        if (bad) {
-            failures++;
-        } else {
-            ok("the MIDI note map triggers the right instrument and ignores others");
         }
     }
 
@@ -2223,8 +2173,8 @@ static void usage(const char *program)
            "  --noise            verify the 6 noise voices are uncorrelated\n"
            "  --guiro            verify Guiro gate hold and note-off release\n"
            "  --mixer            verify pan, Volume, Balance and instrument gains\n"
-           "  --api              verify triggers, MIDI map, rhythm selection, tempo\n"
-           "                     and the panel mix controls\n"
+           "  --api              verify triggers, rhythm selection, tempo and the\n"
+           "                     the panel mix controls\n"
            "  --panel            verify the panel state snapshot and lamp counter\n"
            "  --pattern          verify the factory patterns, combination and timing\n"
            "  --rhythms [dir]    render all 20 rhythms and two combinations to WAV\n"
