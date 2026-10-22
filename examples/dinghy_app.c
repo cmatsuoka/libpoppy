@@ -62,20 +62,19 @@
  *
  * The panel mapping is a convenience layer, not the Mini Pops panel:
  *
- *   OCT- / OCT+     bank A / bank B (the lever)
- *   FX ENV LFO EDIT GLO HOME SAVE ARP SEQ REC
+ *   first 10 white keys
  *                   the ten rhythm buttons; several may be latched at once
- *   SEL             clear the rhythm buttons (percussion layer only)
+ *   SEL             bank A / bank B (the lever), LED lit in B
  *   PLAY            Start/Stop
- *   keys 1..15      trigger the fifteen instruments (GUIRO is gated)
- *   KNOB1           tempo, 2 BPM a detent (1..240)
- *   KNOB2           Balance (0..1)
+ *   KNOB1           Quijada gain
+ *   KNOB2           Guiro gain
  *   KNOB3           Tambourine gain
- *   KNOB4           Guiro gain
- *   SELECT          Quijada gain
+ *   KNOB4           tempo, 2 BPM a detent (1..240)
  *   MASTER          volume (Dinghy's platform applies it after app_audio())
  *
- * USB-MIDI in uses the library's fixed note map; the app does not send MIDI.
+ * The keys only select rhythms; individual instruments are triggered by
+ * USB-MIDI in, which uses the library's fixed note map. The app does not send
+ * MIDI.
  * Settings are saved when the transport is stopped, no key is held, nothing
  * has changed for 2 s and no trigger has sounded for 4 s; a flash erase stalls
  * the audio, so there is nothing to save while playing.
@@ -225,10 +224,9 @@ static void app_audio(int32_t *out, uint32_t frames)
 #define APP_ACCENT RGB(180, 140, 255)
 #define APP_OFF RGB(90, 90, 90)
 
-#define APP_SETTINGS_MAGIC 0x4D503731u   /* "MP71" */
+#define APP_SETTINGS_MAGIC 0x4D503732u   /* "MP72" */
 #define APP_Q16_ONE 65536
 #define APP_GAIN_STEP (APP_Q16_ONE / 32)
-#define APP_BALANCE_STEP (APP_Q16_ONE / 32)
 
 /* No public "is anything still sounding" query, so be conservative: a flash
  * erase stalls the DAC, and the longest one-shot tails run for seconds. */
@@ -238,7 +236,6 @@ struct app_settings {
     uint32_t magic;
     uint16_t tempo;
     uint16_t buttons;
-    int32_t balance;
     int32_t gain_tambourine;
     int32_t gain_guiro;
     int32_t gain_quijada;
@@ -246,15 +243,12 @@ struct app_settings {
 };
 
 static uint16_t app_tempo = 120u;
-static int32_t app_balance = APP_Q16_ONE / 2;
 static int32_t app_gain_tambourine = APP_Q16_ONE / 2;
 static int32_t app_gain_guiro = APP_Q16_ONE / 2;
 static int32_t app_gain_quijada = APP_Q16_ONE / 2;
 static mp7_bank app_bank = MP7_BANK_A;
 static uint16_t app_buttons = 0u;
 static int app_running = 0;
-static int app_key_guiro;
-static int app_midi_guiro;
 
 static int app_dirty;
 static uint32_t app_touched_at;
@@ -266,10 +260,9 @@ static void app_touch(void)
     app_touched_at = fm1_ms;
 }
 
-/* The ten rhythm buttons, in button-bit order. */
-static const uint8_t APP_RHYTHM_BTN[10] = {
-    BTN_FX, BTN_ENV, BTN_LFO, BTN_EDIT, BTN_GLO,
-    BTN_HOME, BTN_SAVE, BTN_ARP, BTN_SEQ, BTN_REC
+/* The first ten white keys from the left (F3..A4) in note-key order. */
+static const uint8_t APP_RHYTHM_KEY[10] = {
+    0, 2, 4, 6, 7, 9, 11, 12, 14, 16
 };
 
 static const char *const APP_RHYTHM_NAME[20] = {
@@ -347,18 +340,6 @@ static void app_set_tempo(uint16_t bpm)
     }
     flags = irq_lock();
     mp7_set_tempo(app_ctx, bpm);
-    irq_unlock(flags);
-}
-
-static void app_set_balance(int32_t balance_q16)
-{
-    uint32_t flags;
-
-    if (app_ctx == 0) {
-        return;
-    }
-    flags = irq_lock();
-    mp7_set_balance(app_ctx, balance_q16);
     irq_unlock(flags);
 }
 
@@ -447,7 +428,6 @@ static void app_load_settings(void)
     if ((s.tempo >= 1u) && (s.tempo <= 240u)) {
         app_tempo = s.tempo;
     }
-    app_balance = app_clamp(s.balance, 0, APP_Q16_ONE);
     app_gain_tambourine = app_clamp(s.gain_tambourine, 0, APP_Q16_ONE);
     app_gain_guiro = app_clamp(s.gain_guiro, 0, APP_Q16_ONE);
     app_gain_quijada = app_clamp(s.gain_quijada, 0, APP_Q16_ONE);
@@ -462,7 +442,6 @@ static void app_save_settings(void)
     s.magic = APP_SETTINGS_MAGIC;
     s.tempo = app_tempo;
     s.buttons = app_buttons;
-    s.balance = app_balance;
     s.gain_tambourine = app_gain_tambourine;
     s.gain_guiro = app_gain_guiro;
     s.gain_quijada = app_gain_quijada;
@@ -495,8 +474,8 @@ static int app_midi_instr(uint8_t note)
 
 static void app_main(void)
 {
-    uint32_t prev_keys = 0u;
     uint32_t last_flash = 0u, flash_until = 0u;
+    uint32_t prev_keys = 0u;
     uint32_t drawn_bank = ~0u, drawn_buttons = ~0u, drawn_tempo = ~0u;
     int drawn_running = -1;
     uint32_t flags;
@@ -510,7 +489,6 @@ static void app_main(void)
     app_ctx = mp7_create_context(FS);
     if (app_ctx != 0) {
         mp7_set_tempo(app_ctx, app_tempo);
-        mp7_set_balance(app_ctx, app_balance);
         mp7_set_instr_gain(app_ctx, MP7_INSTR_TAMBOURINE, app_gain_tambourine);
         mp7_set_instr_gain(app_ctx, MP7_INSTR_GUIRO, app_gain_guiro);
         mp7_set_instr_gain(app_ctx, MP7_INSTR_QUIJADA, app_gain_quijada);
@@ -523,10 +501,10 @@ static void app_main(void)
 
     lcd_fill(0, 0, 240, 240, C_BLACK);
     draw_text_box(0, 18, 240, &FONT_L, APP_NAME, APP_ACCENT, 1);
-    draw_text_box(0, 126, 240, &FONT_S, "KEYS 1-15 TRIGGER", APP_OFF, 1);
+    draw_text_box(0, 126, 240, &FONT_S, "WHITE KEYS SELECT", APP_OFF, 1);
 
     for (;;) {
-        uint32_t keys, down, up, pressed, released, i;
+        uint32_t keys, pressed, released, notes_pressed, i;
         struct mp7_panel_state panel;
         int32_t steps;
 
@@ -535,25 +513,22 @@ static void app_main(void)
         pressed = fm1_input_edges(&released);
         (void)released;
 
-        if ((pressed & (1u << BTN_OCT_DOWN)) != 0u) {
-            app_bank = MP7_BANK_A;
-            app_touch();
-            app_apply_rhythm();
-        }
-        if ((pressed & (1u << BTN_OCT_UP)) != 0u) {
-            app_bank = MP7_BANK_B;
-            app_touch();
-            app_apply_rhythm();
-        }
+        /* fm1_input_note_edges() catches a key tapped between two loop passes
+         * on the FM-1; the held-bit edge keeps Dinghy's host harness working,
+         * where that call is stubbed out. */
+        keys = fm1_in.notes;
+        notes_pressed = fm1_input_note_edges() | (keys & ~prev_keys);
+        prev_keys = keys;
+
         for (i = 0u; i < 10u; i++) {
-            if ((pressed & (1u << APP_RHYTHM_BTN[i])) != 0u) {
+            if ((notes_pressed & (1u << APP_RHYTHM_KEY[i])) != 0u) {
                 app_buttons ^= (uint16_t)(1u << i);
                 app_touch();
                 app_apply_rhythm();
             }
         }
         if ((pressed & (1u << BTN_SEL)) != 0u) {
-            app_buttons = 0u;
+            app_bank = (app_bank == MP7_BANK_A) ? MP7_BANK_B : MP7_BANK_A;
             app_touch();
             app_apply_rhythm();
         }
@@ -563,24 +538,24 @@ static void app_main(void)
 
         steps = fm1_enc_take(ENC_KNOB1);
         if (steps != 0) {
-            int32_t tempo = (int32_t)app_tempo + (steps * 2);
+            int32_t gain = app_clamp(app_gain_quijada + (steps * APP_GAIN_STEP),
+                                     0, APP_Q16_ONE);
 
-            tempo = app_clamp(tempo, 1, 240);
-            if ((uint16_t)tempo != app_tempo) {
-                app_tempo = (uint16_t)tempo;
-                app_set_tempo(app_tempo);
+            if (gain != app_gain_quijada) {
+                app_gain_quijada = gain;
+                app_set_gain(MP7_INSTR_QUIJADA, app_gain_quijada);
                 app_touch();
             }
         }
 
         steps = fm1_enc_take(ENC_KNOB2);
         if (steps != 0) {
-            int32_t balance = app_clamp(app_balance + (steps * APP_BALANCE_STEP),
-                                        0, APP_Q16_ONE);
+            int32_t gain = app_clamp(app_gain_guiro + (steps * APP_GAIN_STEP),
+                                     0, APP_Q16_ONE);
 
-            if (balance != app_balance) {
-                app_balance = balance;
-                app_set_balance(app_balance);
+            if (gain != app_gain_guiro) {
+                app_gain_guiro = gain;
+                app_set_gain(MP7_INSTR_GUIRO, app_gain_guiro);
                 app_touch();
             }
         }
@@ -599,45 +574,13 @@ static void app_main(void)
 
         steps = fm1_enc_take(ENC_KNOB4);
         if (steps != 0) {
-            int32_t gain = app_clamp(app_gain_guiro + (steps * APP_GAIN_STEP),
-                                     0, APP_Q16_ONE);
+            int32_t tempo = (int32_t)app_tempo + (steps * 2);
 
-            if (gain != app_gain_guiro) {
-                app_gain_guiro = gain;
-                app_set_gain(MP7_INSTR_GUIRO, app_gain_guiro);
+            tempo = app_clamp(tempo, 1, 240);
+            if ((uint16_t)tempo != app_tempo) {
+                app_tempo = (uint16_t)tempo;
+                app_set_tempo(app_tempo);
                 app_touch();
-            }
-        }
-
-        steps = fm1_enc_take(ENC_SELECT);
-        if (steps != 0) {
-            int32_t gain = app_clamp(app_gain_quijada + (steps * APP_GAIN_STEP),
-                                     0, APP_Q16_ONE);
-
-            if (gain != app_gain_quijada) {
-                app_gain_quijada = gain;
-                app_set_gain(MP7_INSTR_QUIJADA, app_gain_quijada);
-                app_touch();
-            }
-        }
-
-        keys = fm1_in.notes;
-        down = keys & ~prev_keys;
-        up = prev_keys & ~keys;
-        prev_keys = keys;
-
-        for (i = 0u; i < 15u; i++) {
-            if ((down & (1u << i)) != 0u) {
-                if (i == (uint32_t)MP7_INSTR_GUIRO) {
-                    app_key_guiro = 1;
-                }
-                app_trigger((mp7_instr)i, 100u);
-            }
-            if (((up & (1u << i)) != 0u) && (i == (uint32_t)MP7_INSTR_GUIRO)) {
-                app_key_guiro = 0;
-                if (!app_midi_guiro) {
-                    app_trigger(MP7_INSTR_GUIRO, 0u);
-                }
             }
         }
 
@@ -651,17 +594,11 @@ static void app_main(void)
                     continue;
                 }
                 if (((status & 0xF0u) == 0x90u) && (d2 != 0u)) {
-                    if (instr == (int)MP7_INSTR_GUIRO) {
-                        app_midi_guiro = 1;
-                    }
                     app_trigger((mp7_instr)instr, d2);
                 } else if (((status & 0xF0u) == 0x80u) ||
                            (((status & 0xF0u) == 0x90u) && (d2 == 0u))) {
                     if (instr == (int)MP7_INSTR_GUIRO) {
-                        app_midi_guiro = 0;
-                        if (!app_key_guiro) {
-                            app_trigger(MP7_INSTR_GUIRO, 0u);
-                        }
+                        app_trigger(MP7_INSTR_GUIRO, 0u);
                     }
                 }
             }
@@ -677,10 +614,9 @@ static void app_main(void)
         }
 
         for (i = 0u; i < 10u; i++) {
-            fm1_led_key(APP_RHYTHM_BTN[i], (app_buttons >> i) & 1u);
+            fm1_led_key(KEY_LED(APP_RHYTHM_KEY[i]), (app_buttons >> i) & 1u);
         }
-        fm1_led_key(BTN_OCT_DOWN, app_bank == MP7_BANK_A);
-        fm1_led_key(BTN_OCT_UP, app_bank == MP7_BANK_B);
+        fm1_led_key(BTN_SEL, app_bank == MP7_BANK_B);
         fm1_led_key(BTN_PLAY, app_running && ((int32_t)(flash_until - fm1_ms) > 0));
 
         if ((app_bank != drawn_bank) || (app_buttons != drawn_buttons) ||
