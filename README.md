@@ -1,4 +1,4 @@
-# libpoppy - a vintage drum machine library
+# libpoppy - a vintage drum machine engine library
 
 A small (just a few dozen kilobytes), lightweight, target-agnostic **C,
 integer-only, 32-bit fixed-point** audio library that implements the 15 voices
@@ -51,10 +51,6 @@ mp7_process(ctx, block, 128);      /* from the audio ISR */
 
 mp7_destroy_context(ctx);
 ```
-
-A context must be released exactly once. The handle cannot be validated, so
-releasing it twice is undefined behaviour; clear your own pointer after the
-release and a repeated teardown is a no-op.
 
 Only the panel controls are exposed, plus a per-instrument gain: master
 Volume, Balance, instrument gain, tempo and rhythm selection. The instrument
