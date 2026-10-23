@@ -20,6 +20,14 @@
 extern "C" {
 #endif
 
+/* Library version. major/minor/patch are packed as 0x00MMmmpp.
+ * The plain integer constants keep MP7_VERSION_NUMBER usable in #if. */
+#define MP7_VERSION_MAJOR 0
+#define MP7_VERSION_MINOR 1
+#define MP7_VERSION_PATCH 0
+#define MP7_VERSION_NUMBER \
+    ((MP7_VERSION_MAJOR << 16) | (MP7_VERSION_MINOR << 8) | MP7_VERSION_PATCH)
+
 /* Sample rate used when the caller passes 0 to mp7_create_context() or
  * mp7_set_sample_rate(). The FM-1 runs at 44100. */
 #define MP7_DEFAULT_SAMPLE_RATE 44100u
@@ -82,6 +90,11 @@ typedef enum {
 
 /* The opaque context. */
 typedef void *mp7_context;
+
+/* Return the version of the library the process is linked against, packed as
+ * MP7_VERSION_NUMBER. This reports the compiled library, so a host can compare
+ * it with the header's MP7_VERSION_NUMBER to detect a mismatched build. */
+uint32_t mp7_version_number(void);
 
 /* A view of one factory rhythm. The pointers refer to const data owned by the
  * library and remain valid for the life of the process.

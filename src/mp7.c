@@ -395,3 +395,8 @@ uint16_t mp7_rhythm_button_bit(mp7_rhythm rhythm)
     }
     return (uint16_t)(1u << ((unsigned int)rhythm % 10u));
 }
+
+uint32_t mp7_version_number(void)
+{
+    return MP7_VERSION_NUMBER;
+}

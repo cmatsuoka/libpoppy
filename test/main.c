@@ -1539,6 +1539,13 @@ static int command_api(void)
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
 
+    /* Version reporting. */
+    if (mp7_version_number() != MP7_VERSION_NUMBER) {
+        fail("mp7_version_number() does not match MP7_VERSION_NUMBER");
+    } else {
+        ok("mp7_version_number() returns the header version");
+    }
+
     /* Factory-pattern access. */
     {
         struct mp7_pattern_view view;
