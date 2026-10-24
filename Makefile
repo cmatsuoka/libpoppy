@@ -12,12 +12,18 @@
 CC      ?= cc
 AR      ?= ar
 RANLIB  ?= ranlib
-OPT     ?= -O2
+OPT     ?= -Os
+HOT_OPT ?= -O2
 
 CSTD     := -std=c99
 WARN     := -Wall -Wextra -Werror
 INCLUDES := -Iinclude -Isrc
 CFLAGS   ?=
+
+# Size first: keep the per-sample audio path (-O2 via HOT_SRCS below) fast and
+# build the rest of the library for size. Function/data sections are
+# deliberately not used: they shrink the linked application but inflate the
+# archive itself, which is the artefact measured here.
 
 # The library must not use floating point anywhere. Ask the compiler to prove
 # it where the warnings are available.
@@ -39,6 +45,15 @@ LIB_SRCS  := $(wildcard src/*.c)
 TEST_SRCS := $(wildcard test/*.c)
 LIB_OBJS  := $(patsubst src/%.c,$(BUILD)/src/%.o,$(LIB_SRCS))
 TEST_OBJS := $(patsubst test/%.c,$(BUILD)/test/%.o,$(TEST_SRCS))
+
+# Per-sample audio path: build these at -O2 regardless of the size-first
+# default. If profiling shows a regression elsewhere (mp7_voice.c and
+# mp7_pattern.c also run per sample), add it here.
+HOT_SRCS := src/mp7_engines.c src/mp7_mixer.c
+HOT_OBJS := $(patsubst src/%.c,$(BUILD)/src/%.o,$(HOT_SRCS))
+
+$(HOT_OBJS): EXTRA_OPT := $(HOT_OPT)
+
 # examples/dinghy_app.c is built inside a Dinghy checkout, not here.
 EXAMPLE_SKIP := examples/play_rhythm.c examples/dinghy_app.c
 EXAMPLES := $(filter-out $(EXAMPLE_SKIP),$(wildcard examples/*.c))
@@ -64,7 +79,7 @@ $(TEST): $(TEST_OBJS) $(LIB)
 
 $(BUILD)/src/%.o: src/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(LIB_CFLAGS) -c -o $@ $<
+	$(CC) $(LIB_CFLAGS) $(EXTRA_OPT) -c -o $@ $<
 
 $(BUILD)/test/%.o: test/%.c
 	@mkdir -p $(dir $@)
