@@ -22,13 +22,15 @@
 #include "mp7.h"
 #include "mp7_fixed.h"
 
-/* Full sine period, one entry per sample of a 4096-step cycle. */
-#define POPPY_SINE_TABLE_SIZE 4096
+/* Full sine period, one entry per sample of a 1024-step cycle. The
+ * oscillator and the filter coefficient setup interpolate between entries,
+ * so this is the stored resolution only, not the output resolution. */
+#define POPPY_SINE_TABLE_SIZE 1024
 
 /* First quadrant including both endpoints, i.e. the zero crossing at index 0
- * and the peak at index 1024. The other quadrants are mirrored and negated
+ * and the peak at index 256. The other quadrants are mirrored and negated
  * from this table. */
-#define POPPY_SINE_QUAD_SIZE 1025
+#define POPPY_SINE_QUAD_SIZE 257
 
 /* Number of points in the soft-clip transfer table. */
 #define POPPY_SOFTCLIP_TABLE_SIZE 256
@@ -73,12 +75,12 @@ struct mp7_factory_rhythm {
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
 extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS];
 
-/* First quadrant of the sine, Q15, for i = 0..1024. This is the only sine
+/* First quadrant of the sine, Q15, for i = 0..256. This is the only sine
  * data in the image, and it is shared by every context, every voice and every
  * future variant of the library. */
 extern const int16_t poppy_sine_quad1[POPPY_SINE_QUAD_SIZE];
 
-/* The full 4096-entry period, allocated and rebuilt from poppy_sine_quad1
+/* The full 1024-entry period, allocated and rebuilt from poppy_sine_quad1
  * the first time a context is created. NULL until then (and if that
  * allocation fails, in which case lookups fall back to the quadrant, which
  * is bit-exact with the full table). The pointer is published only after the
@@ -89,26 +91,33 @@ extern int16_t *poppy_sine;
  * called once, before any voice runs; the table lives for the process. */
 void poppy_sine_init(void);
 
-/* Q15 sine of 2*pi*i/4096 for any index, using the rebuilt table when it is
- * available and the flash-resident quadrant otherwise. */
+/* Q15 sine of 2*pi*i/POPPY_SINE_TABLE_SIZE at a whole table index, using the
+ * rebuilt table when it is available and the flash-resident quadrant
+ * otherwise. */
 static inline int16_t poppy_sine_at(uint32_t index)
 {
-    index &= 0xFFFu;
+    index &= 0x3FFu;
 
     if (poppy_sine != 0) {
         return poppy_sine[index];
     }
-    if (index <= 1024u) {
+    if (index <= 256u) {
         return poppy_sine_quad1[index];
     }
-    if (index <= 2047u) {
-        return poppy_sine_quad1[2048u - index];
+    if (index <= 511u) {
+        return poppy_sine_quad1[512u - index];
     }
-    if (index <= 3071u) {
-        return (int16_t)-poppy_sine_quad1[index - 2048u];
+    if (index <= 767u) {
+        return (int16_t)-poppy_sine_quad1[index - 512u];
     }
-    return (int16_t)-poppy_sine_quad1[4096u - index];
+    return (int16_t)-poppy_sine_quad1[1024u - index];
 }
+
+/* Q15 sine of a 28-bit phase (one full cycle is 2^28), linearly interpolated
+ * between adjacent table entries. The interpolation error is below one Q15
+ * LSB for the stored 1024-step table, and the full 28-bit phase keeps the
+ * oscillator's phase resolution far finer than the old whole-index lookup. */
+int16_t poppy_sine_interp(uint32_t phase);
 
 /* Soft-clip curve over x in [-3, 3], indexed through u = x/3 in [-1, 1].
  *

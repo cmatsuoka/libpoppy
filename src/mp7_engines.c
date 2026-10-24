@@ -35,9 +35,7 @@ void poppy_osc_set_freq(struct poppy_osc *osc, uint32_t freq_hz, uint32_t sample
 
 int32_t poppy_sine_sample(const struct poppy_osc *osc)
 {
-    int32_t q15 = (int32_t)poppy_sine_at((osc->phase >> 16) & 0xFFFu);
-
-    return poppy_q15_to_q31(q15);
+    return poppy_q15_to_q31(poppy_sine_interp(osc->phase));
 }
 
 /* Envelope coefficient for a segment time in microseconds.
@@ -123,9 +121,9 @@ int32_t poppy_env_process(struct poppy_env *env)
 /* Turn a frequency into a table phase for the coefficient calculators. */
 static uint32_t filter_phase(uint32_t freq_hz, uint32_t sample_rate)
 {
-    uint64_t numerator = ((uint64_t)freq_hz << 12) + (sample_rate / 2u);
+    uint64_t numerator = ((uint64_t)freq_hz << 28) + (sample_rate / 2u);
 
-    return (uint32_t)(numerator / sample_rate) & 0xFFFu;
+    return (uint32_t)(numerator / sample_rate) & 0x0FFFFFFFu;
 }
 
 static void biquad_clear(struct poppy_biquad *filter)
@@ -142,8 +140,9 @@ void poppy_biquad_set_highpass(struct poppy_biquad *filter,
 {
     const int32_t q88 = 181; /* 1/sqrt(2), rounded to Q8.8 */
     uint32_t phase = filter_phase(freq_hz, sample_rate);
-    int32_t sin30 = (int32_t)poppy_sine_at(phase) * 32768;
-    int32_t cos30 = (int32_t)poppy_sine_at(phase + 1024u) * 32768;
+    int32_t sin30 = (int32_t)poppy_sine_interp(phase) * 32768;
+    int32_t cos30 = (int32_t)poppy_sine_interp(
+        (phase + 0x04000000u) & PHASE_MASK) * 32768;
     int64_t alpha = ((int64_t)sin30 * 128) / q88;
     int64_t k;
     int32_t half_sum;
@@ -169,8 +168,9 @@ void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
                                uint32_t sample_rate)
 {
     uint32_t phase = filter_phase(freq_hz, sample_rate);
-    int32_t sin30 = (int32_t)poppy_sine_at(phase) * 32768;
-    int32_t cos30 = (int32_t)poppy_sine_at(phase + 1024u) * 32768;
+    int32_t sin30 = (int32_t)poppy_sine_interp(phase) * 32768;
+    int32_t cos30 = (int32_t)poppy_sine_interp(
+        (phase + 0x04000000u) & PHASE_MASK) * 32768;
     int64_t alpha;
     int64_t k;
     int32_t qa;

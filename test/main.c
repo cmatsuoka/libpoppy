@@ -167,7 +167,7 @@ static int command_sine(void)
                mismatches, (unsigned)POPPY_SINE_TABLE_SIZE, worst);
         failures++;
     } else {
-        ok("the rebuilt table matches sin(2*pi*i/4096) at all 4096 indices");
+        ok("the rebuilt table matches sin(2*pi*i/1024) at all 1024 indices");
     }
 
     if (fallback_mismatches != 0) {
@@ -178,10 +178,47 @@ static int command_sine(void)
 
     /* Only the first quadrant lives in the image; the full period is built
      * once, on the first mp7_init(), and shared by every context. */
-    if ((POPPY_SINE_QUAD_SIZE * sizeof(int16_t)) != 2050u) {
-        fail("the sine quadrant is not 2050 bytes");
+    if ((POPPY_SINE_QUAD_SIZE * sizeof(int16_t)) != 514u) {
+        fail("the sine quadrant is not 514 bytes");
     } else {
-        ok("the sine quadrant is 2050 bytes (1025 x int16)");
+        ok("the sine quadrant is 514 bytes (257 x int16)");
+    }
+
+    /* Interpolation quality: the oscillator uses the full 28-bit phase, so
+     * check a dense set of fractional phases against libm. A whole table
+     * index must still be exact. */
+    {
+        unsigned int phases = 4096u;
+        int worst_interp = 0;
+
+        for (i = 0u; i < phases; i++) {
+            uint32_t phase = (uint32_t)((uint64_t)i << 16);
+            double exact = 32767.0 * sin(2.0 * TEST_PI * (double)phase
+                / 268435456.0);
+            int expected = (int)floor(exact + 0.5);
+            int got = (int)poppy_sine_interp(phase);
+            int error = got - expected;
+
+            if (error < 0) {
+                error = -error;
+            }
+            if (error > worst_interp) {
+                worst_interp = error;
+            }
+        }
+        if (worst_interp > 1) {
+            printf("FAIL: sine interpolation is off by %d LSB\n",
+                worst_interp);
+            failures++;
+        } else {
+            printf("ok  : sine interpolation tracks sin() (worst %d LSB)\n",
+                worst_interp);
+        }
+        if ((int)poppy_sine_interp(256u << 18) != 32767) {
+            fail("sine interpolation is not exact at the peak");
+        } else {
+            ok("sine interpolation is exact at whole table indices");
+        }
     }
 
     {

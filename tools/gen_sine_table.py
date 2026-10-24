@@ -4,9 +4,9 @@
 The library keeps only the first quadrant of the sine in flash as a single
 shared `const` table:
 
-    q[i] = floor(32767 * sin(2*pi*i/4096) + 0.5)      for i = 0..1024
+    q[i] = floor(32767 * sin(2*pi*i/1024) + 0.5)      for i = 0..256
 
-Index 0 is the zero crossing, index 1024 the positive peak. The other three
+Index 0 is the zero crossing, index 256 the positive peak. The other three
 quadrants are rebuilt at run time from this quadrant by mirroring and
 negation, so the full period is exact without storing it.
 
@@ -22,13 +22,13 @@ Usage:
 import math
 import sys
 
-FULL_SIZE = 4096
+FULL_SIZE = 1024
 QUAD_SIZE = FULL_SIZE // 4 + 1
 Q15_FULL_SCALE = 32767
 
 
 def q15_sine(index: int) -> int:
-    """floor(32767 * sin(2*pi*index/4096) + 0.5), i.e. round-half-up.
+    """floor(32767 * sin(2*pi*index/1024) + 0.5), i.e. round-half-up.
 
     Round-half-up, not Python's banker's rounding, so the value matches the
     C harness (`floor(exact + 0.5)`) exactly for every index.
@@ -42,7 +42,7 @@ def quad_table() -> list[int]:
 
 
 def rebuild(quad: list[int]) -> list[int]:
-    """Expand the first quadrant to the full 4096-entry period."""
+    """Expand the first quadrant to the full 1024-entry period."""
     table = [0] * FULL_SIZE
     for i in range(FULL_SIZE):
         if i <= FULL_SIZE // 4:
@@ -94,7 +94,7 @@ def main() -> int:
     quad = quad_table()
     bad = check(quad)
     if bad:
-        print("FAIL: the rebuilt table does not match sin(2*pi*i/4096)", file=sys.stderr)
+        print("FAIL: the rebuilt table does not match sin(2*pi*i/1024)", file=sys.stderr)
         return 1
     if quad[FULL_SIZE // 4] != Q15_FULL_SCALE:
         print("FAIL: the peak is not exactly 32767", file=sys.stderr)
