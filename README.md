@@ -4,7 +4,9 @@
 
 A small (just a few dozen kilobytes), lightweight, target-agnostic **C,
 integer-only, 32-bit fixed-point** audio library that implements the 15 voices
-of a well-known vintage drum machine and its 20 built-in rhythm patterns.
+of a vintage Japanese drum machine and its 20 preset rhythm patterns. Check
+the [demo](https://cmatsuoka.github.io/poppy-web) to hear what it sounds
+like.
 
 The library renders a single stereo mix into a caller-supplied buffer. It does
 no I/O and no floating point. Memory allocation happens only when a context is
