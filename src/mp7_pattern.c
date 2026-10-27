@@ -12,6 +12,11 @@
  * the combined grid of every selection, and it is the whole grid when no
  * rhythm button is pressed.
  *
+ * An extended build (-DLIBPOPPY_EXTRA) has a second set of patterns, the
+ * user slots, and the selection is read against them when the sequencer
+ * points at that source. A user pattern is complete - it carries its own
+ * percussion lines - so the shared layer is not added to it.
+ *
  * Disabled columns take no time: the sequencer only ever visits enabled
  * columns. A column that an immediate rhythm change disables is skipped, not
  * waited out. Each visited column lasts three sub-steps (straight) or four
@@ -158,6 +163,60 @@ static void build_default_percussion(struct mp7_sequencer *seq)
     seq->triplet = 0u;
 }
 
+#ifdef LIBPOPPY_EXTRA
+/* Combine the user-defined patterns.
+ *
+ * A user pattern is a complete pattern: it carries its own percussion
+ * lines, so the shared Tambourine/Guiro/Quijada layer is not added to it.
+ * With no button pressed the transport keeps running and stays silent.
+ *
+ * An empty slot plays nothing and disables no column, so it is skipped
+ * instead of being folded into the combination. */
+static void combine_user_patterns(struct mp7_context_s *ctx, uint32_t selected)
+{
+    struct mp7_sequencer *seq = &ctx->sequencer;
+    uint64_t enable = ~(uint64_t)0;
+    uint8_t triplet = 0u;
+    unsigned int index;
+    unsigned int column;
+
+    if (selected == 0u) {
+        if (seq->running != 0u) {
+            seq->enable = ~(uint64_t)0;
+            seq->triplet = 0u;
+        } else {
+            seq->enable = 0u;
+            seq->triplet = 0u;
+        }
+        return;
+    }
+
+    for (index = 0u; index < (unsigned int)MP7_RHYTHM_COUNT; index++) {
+        const struct mp7_user_slot *slot;
+
+        if ((selected & ((uint32_t)1u << index)) == 0u) {
+            continue;
+        }
+
+        slot = &ctx->user_patterns[index];
+        if (slot->used == 0u) {
+            continue;
+        }
+
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            seq->notes[column] |= slot->notes[
+                wrap_column(column, slot->notes_period)];
+        }
+
+        enable &= slot->enable;
+        triplet |= slot->triplet;
+    }
+
+    seq->enable = enable;
+    seq->triplet = triplet;
+}
+#endif /* LIBPOPPY_EXTRA */
+
 void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
@@ -169,6 +228,15 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
 
     seq->selected = selected;
     memset(seq->notes, 0, sizeof(seq->notes));
+
+#ifdef LIBPOPPY_EXTRA
+    /* The user slots are a complete set of patterns of their own, so the
+     * selection is read against them instead of the factory rhythms. */
+    if (seq->source == MP7_SOURCE_USER) {
+        combine_user_patterns(ctx, selected);
+        return;
+    }
+#endif
 
     if (selected == 0u) {
         if (seq->running != 0u) {

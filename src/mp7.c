@@ -396,6 +396,130 @@ uint16_t mp7_rhythm_button_bit(mp7_rhythm rhythm)
     return (uint16_t)(1u << ((unsigned int)rhythm % 10u));
 }
 
+#ifdef LIBPOPPY_EXTRA
+bool mp7_set_user_pattern(mp7_context ctx,
+                           unsigned int index,
+                           const struct mp7_user_pattern *pattern)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    struct mp7_user_slot *slot;
+    uint8_t period;
+    unsigned int column;
+
+    if (c == 0) {
+        return false;
+    }
+    if (index >= (unsigned int)MP7_USER_PATTERN_COUNT) {
+        return false;
+    }
+
+    slot = &c->user_patterns[index];
+
+    if (pattern == 0) {
+        /* An empty slot plays nothing and disables no column. */
+        memset(slot, 0, sizeof(*slot));
+        slot->notes_period = (uint8_t)MP7_PATTERN_STEPS;
+        return true;
+    }
+
+    /* The stored period is the shortest repeating length of the grid, and it
+     * is always a power of two, so the column wraps with a mask. */
+    period = pattern->notes_period;
+    if ((period != (uint8_t)MP7_PATTERN_QUARTER_STEPS) &&
+        (period != (uint8_t)MP7_PATTERN_HALF_STEPS) &&
+        (period != (uint8_t)MP7_PATTERN_STEPS)) {
+        period = (uint8_t)MP7_PATTERN_STEPS;
+    }
+
+    memset(slot->notes, 0, sizeof(slot->notes));
+    for (column = 0u; column < (unsigned int)period; column++) {
+        slot->notes[column] = pattern->notes[column];
+    }
+
+    slot->enable = pattern->enable;
+    slot->notes_period = period;
+    slot->triplet = (pattern->triplet != false) ? 1u : 0u;
+    slot->used = 1u;
+
+    /* A pattern that is playing changes with the pattern: the grid is
+     * rebuilt from the current playhead, like an immediate rhythm change.
+     * The preset source does not read the slots, so it is left alone. */
+    if ((c->sequencer.source == MP7_SOURCE_USER) &&
+        (c->sequencer.running != 0u)) {
+        mp7_pattern_combine(c, c->sequencer.selected);
+    }
+
+    return true;
+}
+
+bool mp7_get_user_pattern(const void *ctx,
+                           unsigned int index,
+                           struct mp7_user_pattern *out)
+{
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
+    const struct mp7_user_slot *slot;
+
+    if (out == 0) {
+        return false;
+    }
+
+    memset(out, 0, sizeof(*out));
+
+    if ((c == 0) || (index >= (unsigned int)MP7_USER_PATTERN_COUNT)) {
+        return false;
+    }
+
+    slot = &c->user_patterns[index];
+    if (slot->used == 0u) {
+        return false;
+    }
+
+    memcpy(out->notes, slot->notes, sizeof(out->notes));
+    out->enable = slot->enable;
+    out->notes_period = slot->notes_period;
+    out->triplet = (slot->triplet != 0u);
+
+    return true;
+}
+
+void mp7_set_pattern_source(mp7_context ctx, mp7_pattern_source source)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    if (source != MP7_PATTERN_SOURCE_USER) {
+        source = MP7_PATTERN_SOURCE_PRESET;
+    }
+
+    c->sequencer.source = (uint8_t)((source == MP7_PATTERN_SOURCE_USER)
+                                     ? MP7_SOURCE_USER
+                                     : MP7_SOURCE_PRESET);
+
+    /* The switch is immediate, like MP7_APPLY_NOW: the selection keeps its
+     * meaning and is re-read against the other set of patterns, the playhead
+     * keeps its position, and a pending change is cancelled. */
+    c->sequencer.pending_valid = 0u;
+    c->sequencer.pending_selected = c->sequencer.selected;
+    c->sequencer.pending_bank = c->sequencer.bank;
+    c->sequencer.pending_buttons = c->sequencer.buttons;
+
+    mp7_pattern_combine(c, c->sequencer.selected);
+}
+
+mp7_pattern_source mp7_get_pattern_source(const void *ctx)
+{
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
+
+    if ((c == 0) || (c->sequencer.source != MP7_SOURCE_USER)) {
+        return MP7_PATTERN_SOURCE_PRESET;
+    }
+    return MP7_PATTERN_SOURCE_USER;
+}
+#endif /* LIBPOPPY_EXTRA */
+
 uint32_t mp7_version_number(void)
 {
     return MP7_VERSION_NUMBER;

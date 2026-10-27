@@ -21,6 +21,9 @@ Cha-Cha, Beguine, Habanera, Slow Rock, Rock 2, Rock 4, March 6/8 and Latin Swing
 Patterns in the same bankcan be combined by selecting multiple rhythms at the same
 time.
 
+A host that wants patterns of its own has a second, host-writable set of 20
+patterns in the library. See [User-defined patterns](#user-defined-patterns).
+
 ## Build
 
 ```sh
@@ -35,6 +38,12 @@ The player is written to `build/examples/play_rhythm`:
 ```sh
 ./build/examples/play_rhythm --tempo 140 --bank B --buttons=1,3
 ```
+
+The library is built with the `LIBPOPPY_EXTRA` macro defined, so it carries
+the user pattern slots. A minimal, preset-only library — the 20 factory
+rhythms and nothing else — is one edit away: empty the `EXTRA_DEF` line in
+the Makefile. `make check` builds and tests both configurations, whichever
+one is the shipped one.
 
 Requirements: a C99 compiler and `make`. The library is built with
 `-std=c99 -Wall -Wextra -Werror`; the build also enables
@@ -113,3 +122,42 @@ open does not restart the ratchet.
 The library is not thread-safe: `mp7_process()` and the setters must not run at
 the same time, and `mp7_create_context()` / `mp7_destroy_context()` must not run
 at the same time as either.
+
+## User-defined patterns
+
+The library ships with the 20 factory rhythms and a second set of 20 pattern
+slots that the host fills itself, plus a switch that points the sequencer at
+those slots instead of at the factory rhythms. The factory rhythms stay
+read-only in either mode.
+
+A user pattern is a complete pattern and not a rhythm plus the shared
+percussion layer: its grid may use every instrument, the Tambourine, Guiro
+and Quijada included, and the shared layer is never added to it.
+
+```c
+#include <mp7.h>
+
+struct mp7_user_pattern pattern;
+
+/* 64 columns of 16-bit instrument masks, bit n = instrument n plays. */
+for (unsigned int column = 0; column < 64; column++) {
+    pattern.notes[column] = ((column % 8) == 0)
+        ? (uint16_t)((1u << MP7_INSTR_BASS) | (1u << MP7_INSTR_COWBELL))
+        : 0;
+}
+pattern.enable = ~(uint64_t)0;  /* every column is enabled */
+pattern.notes_period = 64;      /* the grid does not repeat earlier */
+pattern.triplet = false;
+
+mp7_set_user_pattern(ctx, 0, &pattern);  /* slot 0 = bank A, button 0 */
+mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+```
+
+`mp7_get_user_pattern()` reads a slot back, `mp7_set_user_pattern(ctx, index,
+NULL)` empties one, and `mp7_reset()` empties all of them and returns to the
+preset source. A pattern that is playing changes with the pattern.
+
+With no button pressed the user source keeps the transport running and stays
+silent: the shared percussion layer belongs to the preset source, and a user
+pattern carries its own percussion lines.

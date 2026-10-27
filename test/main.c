@@ -20,6 +20,8 @@
  *   --panel             verify the panel state snapshot and lamp flash counter
  *   --pattern           verify the 20 patterns, combination and timing
  *   --rhythms [dir]     render all 20 rhythms and two combinations to WAV
+ *   --user              verify the user pattern slots and the pattern source
+ *                       switch (an extended build, -DLIBPOPPY_EXTRA, only)
  *   --help              this text
  *
  * Exit status is 0 when every check passed, 1 otherwise.
@@ -940,6 +942,342 @@ static int command_pattern(void)
     free(ctx);
     return failures == 0 ? 0 : 1;
 }
+
+#ifdef LIBPOPPY_EXTRA
+
+/* A user pattern with one instrument mask on every column of its period. */
+static void fill_user_pattern(struct mp7_user_pattern *pattern,
+                              uint16_t mask,
+                              uint8_t period)
+{
+    unsigned int column;
+
+    memset(pattern, 0, sizeof(*pattern));
+    pattern->enable = ~(uint64_t)0;
+    pattern->notes_period = period;
+    pattern->triplet = false;
+
+    for (column = 0u; column < (unsigned int)period; column++) {
+        pattern->notes[column] = mask;
+    }
+}
+
+/* The combined grid of a single user slot: the slot's own columns, with
+ * nothing else added to them. */
+static int user_grid_matches(const struct mp7_sequencer *seq,
+                              const struct mp7_user_pattern *pattern)
+{
+    unsigned int column;
+
+    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+        uint16_t expect = pattern->notes[
+            column & (unsigned int)(pattern->notes_period - 1u)];
+
+        if (seq->notes[column] != expect) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* The combined grid of one factory rhythm: its own columns plus the shared
+ * percussion layer. */
+static int factory_grid_matches(const struct mp7_sequencer *seq,
+                                 const struct mp7_factory_rhythm *pattern)
+{
+    unsigned int column;
+
+    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+        uint16_t expect = (uint16_t)(
+            pattern->notes[column & (unsigned int)(pattern->notes_period - 1u)] |
+            mp7_shared_percussion_notes[
+                column & (MP7_PATTERN_HALF_STEPS - 1u)]);
+
+        if (seq->notes[column] != expect) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int command_user(void)
+{
+    struct mp7_context_s *ctx = context_new();
+    const uint32_t sample_rate = MP7_DEFAULT_SAMPLE_RATE;
+    struct mp7_user_pattern pattern;
+    struct mp7_user_pattern readback;
+    unsigned int column;
+
+    mp7_init(ctx, sample_rate);
+
+    /* A pattern survives the round trip through a slot. */
+    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
+                      (uint8_t)MP7_PATTERN_HALF_STEPS);
+    if (!mp7_set_user_pattern(ctx, 0u, &pattern)) {
+        fail("mp7_set_user_pattern() rejected a valid slot");
+    } else if (!mp7_get_user_pattern(ctx, 0u, &readback)) {
+        fail("mp7_get_user_pattern() did not return a stored pattern");
+    } else {
+        int same = (readback.enable == pattern.enable) &&
+                   (readback.notes_period == pattern.notes_period) &&
+                   (readback.triplet == pattern.triplet);
+
+        for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
+            if (readback.notes[column] != pattern.notes[column]) {
+                same = 0;
+            }
+        }
+
+        if (!same) {
+            fail("a user pattern did not survive the round trip");
+        } else {
+            ok("a user pattern survives the round trip through a slot");
+        }
+    }
+
+    /* A bad slot, a bad context and a null destination. */
+    if (mp7_set_user_pattern(ctx, MP7_USER_PATTERN_COUNT, &pattern) ||
+        mp7_set_user_pattern(0, 0u, &pattern) ||
+        mp7_get_user_pattern(ctx, MP7_USER_PATTERN_COUNT, &readback) ||
+        mp7_get_user_pattern(0, 0u, &readback) ||
+        mp7_get_user_pattern(ctx, 0u, 0)) {
+        fail("the user pattern API accepted an invalid argument");
+    } else {
+        ok("the user pattern API rejects invalid arguments");
+    }
+
+    /* A null pattern empties the slot, and an empty slot is not a pattern. */
+    if (!mp7_set_user_pattern(ctx, 0u, 0)) {
+        fail("mp7_set_user_pattern() rejected a null pattern");
+    } else if (mp7_get_user_pattern(ctx, 0u, &readback)) {
+        fail("an emptied slot still returns a pattern");
+    } else {
+        ok("a null pattern empties the slot");
+    }
+
+    /* The preset source ignores the user slots. Button 0 is the Waltz, so
+     * the selection points at slot 0 in the user source. */
+    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
+                      (uint8_t)MP7_PATTERN_HALF_STEPS);
+    mp7_set_user_pattern(ctx, 0u, &pattern);
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    if (mp7_get_pattern_source(ctx) != MP7_PATTERN_SOURCE_PRESET) {
+        fail("the preset source is not the default");
+    } else if (!factory_grid_matches(&ctx->sequencer,
+                                     &mp7_factory_rhythms[MP7_RHYTHM_WALTZ])) {
+        fail("the preset source does not play the factory rhythm");
+    } else {
+        ok("the preset source plays the factory rhythms, not the user slots");
+    }
+
+    /* The switch re-reads the current selection against the user slots. */
+    mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+    if (mp7_get_pattern_source(ctx) != MP7_PATTERN_SOURCE_USER) {
+        fail("the pattern source did not switch to the user slots");
+    } else if (!user_grid_matches(&ctx->sequencer, &pattern)) {
+        fail("the user source does not play the user slot");
+    } else {
+        ok("the source switch points the selection at the user slots");
+    }
+
+    /* A user pattern is complete: the shared percussion layer is not added
+     * to it, and its own percussion lines play. */
+    {
+        struct mp7_user_pattern percussion;
+
+        fill_user_pattern(&percussion,
+                          (uint16_t)(1u << MP7_INSTR_TAMBOURINE),
+                          (uint8_t)MP7_PATTERN_STEPS);
+        mp7_set_user_pattern(ctx, 1u, &percussion);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+                          mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA));
+
+        if ((ctx->sequencer.notes[0] &
+             (uint16_t)~((uint16_t)(1u << MP7_INSTR_TAMBOURINE) |
+                          (uint16_t)(1u << MP7_INSTR_BASS))) != 0u) {
+            fail("a user pattern carries the shared percussion layer");
+        } else if ((ctx->sequencer.notes[0] &
+                    (uint16_t)(1u << MP7_INSTR_TAMBOURINE)) == 0u) {
+            fail("a user pattern does not play its own percussion line");
+        } else {
+            ok("a user pattern plays its own percussion, not the shared layer");
+        }
+    }
+
+    /* Two user slots combine like two factory rhythms: the notes are OR-ed
+     * and the enable masks are AND-ed. */
+    {
+        struct mp7_user_pattern snare;
+
+        fill_user_pattern(&snare, (uint16_t)(1u << MP7_INSTR_SNARE_1),
+                          (uint8_t)MP7_PATTERN_STEPS);
+        snare.enable = UINT64_C(0x0F0F0F0F0F0F0F0F);
+        mp7_set_user_pattern(ctx, 2u, &snare);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+                          mp7_rhythm_button_bit(MP7_RHYTHM_MAMBO));
+
+        if ((ctx->sequencer.enable != UINT64_C(0x0F0F0F0F0F0F0F0F)) ||
+            ((ctx->sequencer.notes[0] & (uint16_t)(1u << MP7_INSTR_SNARE_1)) == 0u) ||
+            ((ctx->sequencer.notes[0] & (uint16_t)(1u << MP7_INSTR_BASS)) == 0u)) {
+            fail("two user slots do not combine like two factory rhythms");
+        } else {
+            ok("two user slots combine like two factory rhythms");
+        }
+    }
+
+    /* An empty slot plays nothing and disables no column. */
+    mp7_init(ctx, sample_rate);
+    mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+    if ((ctx->sequencer.enable != ~(uint64_t)0) ||
+        (ctx->sequencer.notes[0] != 0u)) {
+        fail("an empty user slot is not a silent pattern");
+    } else {
+        ok("an empty user slot plays nothing and disables no column");
+    }
+
+    /* With no button pressed the user source keeps the transport running
+     * and stays silent: the shared layer belongs to the preset source. */
+    mp7_select_rhythm(ctx, MP7_BANK_A, 0u);
+    if (!mp7_rhythm_running(ctx) || (ctx->sequencer.enable != ~(uint64_t)0)) {
+        fail("the user source stops the transport when no button is pressed");
+    } else {
+        int silent = 1;
+
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if (ctx->sequencer.notes[column] != 0u) {
+                silent = 0;
+                break;
+            }
+        }
+        if (!silent) {
+            fail("the user source plays the shared percussion layer");
+        } else {
+            ok("the user source stays silent when no button is pressed");
+        }
+    }
+
+    /* The triplet flag reaches the sequencer. */
+    {
+        struct mp7_user_pattern shuffle;
+
+        fill_user_pattern(&shuffle, (uint16_t)(1u << MP7_INSTR_BASS),
+                          (uint8_t)MP7_PATTERN_STEPS);
+        shuffle.triplet = true;
+        mp7_set_user_pattern(ctx, 3u, &shuffle);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
+                          mp7_rhythm_button_bit(MP7_RHYTHM_SAMBA) |
+                          mp7_rhythm_button_bit(MP7_RHYTHM_MAMBO) |
+                          mp7_rhythm_button_bit(MP7_RHYTHM_RUMBA));
+        if (ctx->sequencer.triplet == 0u) {
+            fail("the triplet flag of a user pattern was lost");
+        } else {
+            ok("the triplet flag of a user pattern reaches the sequencer");
+        }
+    }
+
+    /* The switch keeps the playhead and cancels a pending change. */
+    mp7_init(ctx, sample_rate);
+    mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+    mp7_pattern_tick(ctx);
+    mp7_select_rhythm(ctx, MP7_BANK_B,
+                      mp7_rhythm_button_bit(MP7_RHYTHM_JAZZ_WALTZ) |
+                      MP7_APPLY_NEXT_CYCLE);
+    {
+        uint8_t column = ctx->sequencer.column;
+        struct mp7_panel_state state;
+
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+        mp7_get_panel_state(ctx, &state);
+        if (ctx->sequencer.column != column) {
+            fail("the source switch moved the playhead");
+        } else if (state.pending) {
+            fail("the source switch left a pending change behind");
+        } else {
+            ok("the source switch keeps the playhead and cancels a pending change");
+        }
+    }
+
+    /* A reset empties the slots and returns to the preset source. */
+    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
+                      (uint8_t)MP7_PATTERN_QUARTER_STEPS);
+    mp7_set_user_pattern(ctx, 4u, &pattern);
+    mp7_reset(ctx);
+    if (mp7_get_pattern_source(ctx) != MP7_PATTERN_SOURCE_PRESET) {
+        fail("a reset did not return to the preset source");
+    } else if (mp7_get_user_pattern(ctx, 0u, &readback)) {
+        fail("a reset did not empty the user slots");
+    } else {
+        ok("a reset empties the user slots and returns to the preset source");
+    }
+
+    /* A user pattern plays. */
+    {
+        int16_t block[512 * 2];
+        int nonzero = 0;
+        size_t i;
+
+        mp7_init(ctx, sample_rate);
+        fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
+                          (uint8_t)MP7_PATTERN_QUARTER_STEPS);
+        mp7_set_user_pattern(ctx, 0u, &pattern);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+
+        memset(block, 0, sizeof(block));
+        mp7_process(ctx, block, 512);
+        for (i = 0u; i < 512u * 2u; i++) {
+            if (block[i] != 0) {
+                nonzero = 1;
+                break;
+            }
+        }
+        if (!nonzero) {
+            fail("a user pattern renders no audio");
+        } else {
+            ok("a user pattern renders audio");
+        }
+    }
+
+    /* A pattern that is playing changes with the pattern. */
+    {
+        struct mp7_user_pattern changed;
+
+        mp7_init(ctx, sample_rate);
+        fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
+                          (uint8_t)MP7_PATTERN_HALF_STEPS);
+        mp7_set_user_pattern(ctx, 0u, &pattern);
+        mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+
+        fill_user_pattern(&changed, (uint16_t)(1u << MP7_INSTR_SNARE_2),
+                          (uint8_t)MP7_PATTERN_HALF_STEPS);
+        mp7_set_user_pattern(ctx, 0u, &changed);
+        if (!user_grid_matches(&ctx->sequencer, &changed)) {
+            fail("a playing user pattern did not change with the pattern");
+        } else {
+            ok("a playing user pattern changes with the pattern");
+        }
+    }
+
+    free(ctx);
+    return failures == 0 ? 0 : 1;
+}
+
+#else /* !LIBPOPPY_EXTRA */
+
+static int command_user(void)
+{
+    printf("skip: the user pattern slots need an extended build"
+           " (-DLIBPOPPY_EXTRA)\n");
+    return 0;
+}
+
+#endif /* LIBPOPPY_EXTRA */
 
 static int render_rhythm(struct mp7_context_s *ctx,
                          uint32_t selection,
@@ -2225,6 +2563,8 @@ static void usage(const char *program)
            "  --pattern          verify the factory patterns, combination and timing\n"
            "  --rhythms [dir]    render all 20 rhythms and two combinations to WAV\n"
            "                     files (default dir: build)\n"
+           "  --user             verify the user pattern slots and the pattern\n"
+           "                     source switch (an extended build only)\n"
            "  --help             this text\n");
 }
 
@@ -2285,6 +2625,9 @@ int main(int argc, char **argv)
         const char *dir = (argc > 2) ? argv[2] : "build";
 
         return command_rhythms(dir);
+    }
+    if (strcmp(command, "--user") == 0) {
+        return command_user();
     }
     if (strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0) {
         usage(argv[0]);

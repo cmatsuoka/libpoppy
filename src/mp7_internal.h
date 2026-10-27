@@ -75,6 +75,36 @@ struct mp7_factory_rhythm {
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
 extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS];
 
+/* Which set of patterns the sequencer plays. The field exists in every
+ * build, so the factory path needs no conditional code; only the extended
+ * build can move it away from the preset source. */
+#define MP7_SOURCE_PRESET 0u
+#define MP7_SOURCE_USER 1u
+
+#ifdef LIBPOPPY_EXTRA
+
+/* The user slots are addressed the way the factory rhythms are, so the two
+ * sets have the same size. */
+#if MP7_USER_PATTERN_COUNT != 20
+#error "the user pattern slots must match the 20 factory rhythms"
+#endif
+
+/* One user-defined pattern slot.
+ *
+ * The grid holds every instrument, the Tambourine, Guiro and Quijada
+ * included, so a user pattern is a complete pattern and not a rhythm plus
+ * the shared percussion layer. `used` is clear for an empty slot, which
+ * plays nothing and disables no column. */
+struct mp7_user_slot {
+    uint16_t notes[MP7_PATTERN_STEPS];
+    uint64_t enable;
+    uint8_t notes_period;
+    uint8_t triplet;
+    uint8_t used;
+};
+
+#endif /* LIBPOPPY_EXTRA */
+
 /* First quadrant of the sine, Q15, for i = 0..256. This is the only sine
  * data in the image, and it is shared by every context, every voice and every
  * future variant of the library. */
@@ -243,7 +273,10 @@ struct mp7_voice {
  *
  * `running` is the transport, which is separate from the key selection. When
  * it is set and `selected` is zero, the combined grid is the fixed
- * Tambourine/Guiro/Quijada percussion layer. */
+ * Tambourine/Guiro/Quijada percussion layer.
+ *
+ * `source` is the set of patterns the selection refers to: the factory
+ * rhythms or, in an extended build, the user slots. */
 struct mp7_sequencer {
     uint32_t selected;                     /* bit n = mp7_rhythm n */
     uint32_t pending_selected;             /* selection for the next cycle */
@@ -263,6 +296,7 @@ struct mp7_sequencer {
     uint8_t guiro_gated;                   /* the sequencer's own Guiro gate */
     uint8_t pending_valid;
     uint8_t running;                       /* transport: false after a stop */
+    uint8_t source;                        /* MP7_SOURCE_PRESET or _USER */
 };
 
 /* Per-variant context. mp7_create_context() allocates and prepares it; the
@@ -280,6 +314,9 @@ struct mp7_context_s {
     struct poppy_mixer mixer;
     uint8_t guiro_manual_gated;             /* the caller's own Guiro note-on */
     uint8_t guiro_open;                     /* the Guiro voice is gated now */
+#ifdef LIBPOPPY_EXTRA
+    struct mp7_user_slot user_patterns[MP7_USER_PATTERN_COUNT];
+#endif
 };
 
 /* Fixed-memory context setup, kept out of the public header. */

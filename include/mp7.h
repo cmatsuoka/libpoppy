@@ -7,6 +7,10 @@
  * buffer. It has no I/O and no floating point. A context is created with
  * mp7_create_context(), which also builds the shared full-period sine table on
  * first use.
+ *
+ * Building with -DLIBPOPPY_EXTRA adds a second, host-writable set of 20
+ * pattern slots and the switch that points the sequencer at them. Without
+ * the macro the library is the preset-only build.
  */
 
 #ifndef MP7_H
@@ -144,7 +148,10 @@ void mp7_destroy_context(mp7_context ctx);
 void mp7_set_sample_rate(mp7_context ctx, uint32_t sample_rate);
 
 /* Reset the voices, the sequencer and the mix controls to their defaults,
- * keeping the sample rate. */
+ * keeping the sample rate.
+ *
+ * In an extended build (-DLIBPOPPY_EXTRA) this also empties the user
+ * pattern slots and returns to the preset pattern source. */
 void mp7_reset(mp7_context ctx);
 
 /* Render `frames` stereo interleaved frames into `stereo_out`.
@@ -285,6 +292,103 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out);
  * bit. */
 mp7_bank mp7_rhythm_bank(mp7_rhythm rhythm);
 uint16_t mp7_rhythm_button_bit(mp7_rhythm rhythm);
+
+#ifdef LIBPOPPY_EXTRA
+/* ---------------------------------------------------------------------------
+ * Extended build: user-defined patterns.
+ *
+ * Define LIBPOPPY_EXTRA when building the library to get a second set of 20
+ * pattern slots that the host fills itself, and a switch that points the
+ * sequencer at those slots instead of at the 20 factory rhythms. The factory
+ * rhythms stay read-only in either build: the sequencer never writes them.
+ *
+ * Without the macro the library is the preset-only build it has always been
+ * - the 20 factory rhythms, the shared percussion layer, and no extra RAM
+ * and no extra entry points.
+ * ------------------------------------------------------------------------ */
+
+/* The number of user pattern slots. They are addressed the way the factory
+ * rhythms are: slots 0..9 are the bank A buttons, slots 10..19 are the bank
+ * B buttons. */
+#define MP7_USER_PATTERN_COUNT 20u
+
+/* The number of columns in a user pattern grid. */
+#define MP7_USER_PATTERN_COLUMNS 64u
+
+/* Which set of patterns the sequencer plays. */
+typedef enum {
+    MP7_PATTERN_SOURCE_PRESET = 0, /* the 20 factory rhythms */
+    MP7_PATTERN_SOURCE_USER = 1    /* the 20 user-defined slots */
+} mp7_pattern_source;
+
+/* A user-defined pattern.
+ *
+ * `notes` is MP7_USER_PATTERN_COLUMNS columns of 16-bit instrument masks:
+ * bit n is set when instrument n (in mp7_instr order) plays in that column.
+ * Unlike a factory rhythm, a user pattern may use every instrument, the
+ * Tambourine, Guiro and Quijada included: a user pattern is a complete
+ * pattern and not a rhythm plus the shared percussion layer, so the shared
+ * layer is never added to it.
+ *
+ * `enable` is a 64-bit mask, one bit per column; disabled columns take no
+ * time. An all-zero mask disables every column and stops the sequencer, so
+ * use ~0 for a full 64-column loop.
+ *
+ * `notes_period` is the length of the repeating part of the grid: 16, 32
+ * or 64 columns. Column c of the pattern is `notes[c & (notes_period - 1)]`
+ * and the columns from notes_period on are ignored. Any other value is
+ * stored as a full 64-column grid.
+ *
+ * `triplet` is true for a shuffle pattern: a triplet column spans four
+ * sub-steps instead of three. */
+struct mp7_user_pattern {
+    uint16_t notes[MP7_USER_PATTERN_COLUMNS];
+    uint64_t enable;
+    uint8_t notes_period;
+    bool triplet;
+};
+
+/* Copy a pattern into one of the user slots.
+ *
+ * `index` is 0..MP7_USER_PATTERN_COUNT-1 and follows the panel: slots 0..9
+ * are the bank A buttons, slots 10..19 the bank B buttons. The pattern is
+ * copied, so the caller keeps ownership of `pattern` and may release it
+ * right away.
+ *
+ * A null `pattern` clears the slot. An empty slot plays nothing and
+ * disables no column, so it behaves like a silent pattern when it is
+ * selected on its own.
+ *
+ * A pattern that is playing changes with the pattern: the grid is rebuilt
+ * from the current playhead, like an immediate rhythm change.
+ *
+ * Returns false when `ctx` is null or `index` is out of range; the slots
+ * are left alone in that case. */
+bool mp7_set_user_pattern(mp7_context ctx,
+                           unsigned int index,
+                           const struct mp7_user_pattern *pattern);
+
+/* Copy the pattern in one of the user slots into `out`.
+ *
+ * Returns false when `ctx` is null, `index` is out of range, `out` is null
+ * or the slot is empty; an empty or invalid slot yields a zeroed pattern.
+ * The copy is the pattern as it was stored, so a set/get round trip returns
+ * the same grid, enable mask, period and triplet flag. */
+bool mp7_get_user_pattern(const void *ctx,
+                           unsigned int index,
+                           struct mp7_user_pattern *out);
+
+/* Point the sequencer at the factory rhythms or at the user slots.
+ *
+ * The switch is immediate, like MP7_APPLY_NOW: the current bank/button
+ * selection keeps its meaning and is re-read against the other set of
+ * patterns, the playhead keeps its position and a pending change is
+ * cancelled. */
+void mp7_set_pattern_source(mp7_context ctx, mp7_pattern_source source);
+
+/* The set of patterns the sequencer plays. */
+mp7_pattern_source mp7_get_pattern_source(const void *ctx);
+#endif /* LIBPOPPY_EXTRA */
 
 #ifdef __cplusplus
 } /* extern "C" */
