@@ -103,6 +103,12 @@ struct mp7_user_slot {
     uint8_t used;
 };
 
+/* Accent processing is part of the extended build only. The 16th bit of a
+ * user pattern column is the accent flag; the lower 15 bits are instruments. */
+#define MP7_PATTERN_INSTRUMENT_MASK ((uint16_t)((1u << MP7_INSTR_COUNT) - 1u))
+#define MP7_PATTERN_ACCENT_BIT      ((uint16_t)(1u << MP7_INSTR_COUNT))
+#define MP7_PATTERN_ACCENT_GAIN_Q16 ((int32_t)((6 * POPPY_Q16_ONE) / 5))
+
 #endif /* LIBPOPPY_EXTRA */
 
 /* First quadrant of the sine, Q15, for i = 0..256. This is the only sine
@@ -246,6 +252,9 @@ struct mp7_voice {
     int32_t level_q16;      /* fixed per-voice Level, Q16 */
     int32_t pan_q16;        /* fixed per-voice Pan, Q16 (32768 = centre) */
     uint8_t balance_group;  /* enum poppy_mix_group */
+#ifdef LIBPOPPY_EXTRA
+    int32_t accent_gain_q16; /* pattern accent gain, Q16 (default 1.0) */
+#endif
     uint32_t prng;          /* xorshift32 state, never zero */
     int32_t last_rate;      /* Guiro rate-oscillator sign detector */
     int32_t prev_clock;     /* Quijada comparator history, Q30 */

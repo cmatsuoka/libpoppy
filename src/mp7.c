@@ -171,7 +171,16 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
                 continue;
             }
 
+#ifdef LIBPOPPY_EXTRA
+            {
+                int32_t accented_gain = poppy_mul_q16(voice_gain[instr],
+                                                      voice->accent_gain_q16);
+
+                sample = poppy_mul_q31_gain(sample, accented_gain);
+            }
+#else
             sample = poppy_mul_q31_gain(sample, voice_gain[instr]);
+#endif
             sum_left += poppy_mixer_pan_left(sample, voice->pan_q16);
             sum_right += poppy_mixer_pan_right(sample, voice->pan_q16);
         }
@@ -202,6 +211,9 @@ void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity)
         return;
     }
 
+#ifdef LIBPOPPY_EXTRA
+    c->voices[instr].accent_gain_q16 = POPPY_Q16_ONE;
+#endif
     mp7_voice_trigger(&c->voices[instr]);
 }
 

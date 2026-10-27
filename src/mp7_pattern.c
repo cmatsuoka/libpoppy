@@ -376,6 +376,30 @@ static void fire_column(struct mp7_context_s *ctx)
     column = seq->column;
     hits = seq->notes[column];
 
+#ifdef LIBPOPPY_EXTRA
+    {
+        int accented = (int)((hits & MP7_PATTERN_ACCENT_BIT) != 0u);
+
+        hits &= MP7_PATTERN_INSTRUMENT_MASK;
+
+        for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
+            int hit = (int)((hits >> instr) & 1u);
+
+            if (instr == (unsigned int)MP7_INSTR_GUIRO) {
+                /* The gate belongs to the sequencer, but a note the caller
+                 * triggered itself keeps it open as well. */
+                mp7_guiro_gate(ctx, (uint8_t)(hit != 0), ctx->guiro_manual_gated);
+            } else if (hit != 0) {
+                struct mp7_voice *voice = &ctx->voices[instr];
+
+                voice->accent_gain_q16 = accented
+                    ? MP7_PATTERN_ACCENT_GAIN_Q16
+                    : POPPY_Q16_ONE;
+                mp7_voice_trigger(voice);
+            }
+        }
+    }
+#else
     for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
         int hit = (int)((hits >> instr) & 1u);
 
@@ -387,6 +411,7 @@ static void fire_column(struct mp7_context_s *ctx)
             mp7_voice_trigger(&ctx->voices[instr]);
         }
     }
+#endif
 }
 
 void mp7_pattern_tick(struct mp7_context_s *ctx)

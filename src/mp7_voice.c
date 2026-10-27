@@ -85,6 +85,9 @@ static void voice_setup(struct mp7_voice *voice,
     voice->level_q16 = POPPY_Q16_ONE;
     voice->pan_q16 = POPPY_Q16_ONE / 2;
     voice->balance_group = POPPY_MIX_GROUP_NONE;
+#ifdef LIBPOPPY_EXTRA
+    voice->accent_gain_q16 = POPPY_Q16_ONE;
+#endif
 
     switch (instr) {
     case MP7_INSTR_BASS:

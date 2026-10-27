@@ -315,6 +315,11 @@ uint16_t mp7_rhythm_button_bit(mp7_rhythm rhythm);
 /* The number of columns in a user pattern grid. */
 #define MP7_USER_PATTERN_COLUMNS 64u
 
+/* Accent flag for a user-defined pattern column. When this bit is set in a
+ * column, every instrument in that column (except the gated Guiro) is played
+ * louder. It occupies the 16th bit because the 15 instruments fill bits 0..14. */
+#define MP7_PATTERN_ACCENT ((uint16_t)(1u << MP7_INSTR_COUNT))
+
 /* Which set of patterns the sequencer plays. */
 typedef enum {
     MP7_PATTERN_SOURCE_PRESET = 0, /* the 20 factory rhythms */
@@ -324,11 +329,11 @@ typedef enum {
 /* A user-defined pattern.
  *
  * `notes` is MP7_USER_PATTERN_COLUMNS columns of 16-bit instrument masks:
- * bit n is set when instrument n (in mp7_instr order) plays in that column.
- * Unlike a factory rhythm, a user pattern may use every instrument, the
- * Tambourine, Guiro and Quijada included: a user pattern is a complete
- * pattern and not a rhythm plus the shared percussion layer, so the shared
- * layer is never added to it.
+ * bit n is set when instrument n (in mp7_instr order) plays in that column,
+ * and MP7_PATTERN_ACCENT (bit 15) marks an accented column. Unlike a factory
+ * rhythm, a user pattern may use every instrument, the Tambourine, Guiro and
+ * Quijada included: a user pattern is a complete pattern and not a rhythm
+ * plus the shared percussion layer, so the shared layer is never added to it.
  *
  * `enable` is a 64-bit mask, one bit per column; disabled columns take no
  * time. An all-zero mask disables every column and stops the sequencer, so

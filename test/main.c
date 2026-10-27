@@ -1264,6 +1264,94 @@ static int command_user(void)
         }
     }
 
+    /* Accent: bit 15 of a user pattern column makes every instrument in the
+     * column (except the gated Guiro) louder, and it survives a slot round
+     * trip. */
+    {
+        struct mp7_user_pattern accented;
+        struct mp7_user_pattern readback;
+        unsigned int i;
+        unsigned int failures_before = (unsigned int)failures;
+
+        mp7_init(ctx, sample_rate);
+        memset(&accented, 0, sizeof(accented));
+        accented.enable = ~(uint64_t)0;
+        accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
+        accented.triplet = false;
+        accented.notes[0] = (uint16_t)(1u << MP7_INSTR_BASS);
+        accented.notes[1] = (uint16_t)((1u << MP7_INSTR_BASS) |
+                                       MP7_PATTERN_ACCENT);
+
+        mp7_set_user_pattern(ctx, 0u, &accented);
+        if (!mp7_get_user_pattern(ctx, 0u, &readback)) {
+            fail("mp7_get_user_pattern() did not return an accented pattern");
+        } else if (readback.notes[1] != accented.notes[1]) {
+            fail("the accent bit did not survive the user pattern round trip");
+        }
+
+        mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+
+        /* Make every tick a sub-step boundary so columns advance quickly. */
+        ctx->sequencer.sub_step_samples = 1u;
+
+        mp7_pattern_tick(ctx);                 /* fire column 0 */
+        if (ctx->voices[MP7_INSTR_BASS].accent_gain_q16 != POPPY_Q16_ONE) {
+            fail("an unaccented column carries accent gain");
+        }
+
+        for (i = 0u; i < 3u; i++) {            /* advance to column 1 */
+            mp7_pattern_tick(ctx);
+        }
+        mp7_pattern_tick(ctx);                   /* fire column 1 */
+        if (ctx->voices[MP7_INSTR_BASS].accent_gain_q16 !=
+            MP7_PATTERN_ACCENT_GAIN_Q16) {
+            fail("an accented column does not raise the instrument gain");
+        }
+
+        if ((unsigned int)failures == failures_before) {
+            ok("user pattern accent bit survives round trip and raises gain");
+        }
+    }
+
+    /* The gated Guiro ignores the accent bit; its gain stays at unity. */
+    {
+        struct mp7_user_pattern accented;
+        unsigned int i;
+        unsigned int failures_before = (unsigned int)failures;
+
+        mp7_init(ctx, sample_rate);
+        memset(&accented, 0, sizeof(accented));
+        accented.enable = ~(uint64_t)0;
+        accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
+        accented.triplet = false;
+        accented.notes[0] = (uint16_t)(1u << MP7_INSTR_GUIRO);
+        accented.notes[1] = (uint16_t)((1u << MP7_INSTR_GUIRO) |
+                                       MP7_PATTERN_ACCENT);
+
+        mp7_set_user_pattern(ctx, 0u, &accented);
+        mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+        ctx->sequencer.sub_step_samples = 1u;
+
+        mp7_pattern_tick(ctx);                 /* fire column 0 */
+        if (ctx->voices[MP7_INSTR_GUIRO].accent_gain_q16 != POPPY_Q16_ONE) {
+            fail("unaccented Guiro column changed the Guiro gain");
+        }
+
+        for (i = 0u; i < 3u; i++) {            /* advance to column 1 */
+            mp7_pattern_tick(ctx);
+        }
+        mp7_pattern_tick(ctx);                 /* fire column 1 */
+        if (ctx->voices[MP7_INSTR_GUIRO].accent_gain_q16 != POPPY_Q16_ONE) {
+            fail("accented Guiro column changed the Guiro gain");
+        }
+
+        if ((unsigned int)failures == failures_before) {
+            ok("Guiro ignores the user pattern accent bit");
+        }
+    }
+
     free(ctx);
     return failures == 0 ? 0 : 1;
 }
