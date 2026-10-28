@@ -111,6 +111,37 @@ struct mp7_user_slot {
 
 #endif /* LIBPOPPY_EXTRA */
 
+/* The factory cut-offs the extended build exposes as run-time parameters.
+ *
+ * The noise engine tunes its band-pass to the voice's frequency and its
+ * high-pass to the voice's highpass field, so these are the Snare 1
+ * band-pass centre and the Hihat high-pass cut-off. The voice table
+ * below uses the same names, so the table and the defaults cannot
+ * drift apart. */
+#define MP7_SNARE1_BANDPASS_HZ 5500u
+#define MP7_HIHAT_HIGHPASS_HZ  1000u
+
+#ifdef LIBPOPPY_EXTRA
+
+/* The cut-off ranges the extended build exposes, in Hz. */
+#define MP7_SNARE1_CUTOFF_MIN_HZ 1000u
+#define MP7_SNARE1_CUTOFF_MAX_HZ 15000u
+#define MP7_HIHAT_CUTOFF_MIN_HZ  500u
+#define MP7_HIHAT_CUTOFF_MAX_HZ  15000u
+
+/* The effective cut-off is also limited by the sample rate.
+ *
+ * A biquad is only stable below Nyquist, and the design wraps around at
+ * half the sample rate, where the poles reach the unit circle and the
+ * filter rings without decaying. Two fifths of the sample rate keeps
+ * the poles well inside it (0.64 for the high-pass, 0.72 for the
+ * band-pass) and leaves the whole documented range available at
+ * 44100 Hz. */
+#define MP7_CUTOFF_RATE_NUM 2u
+#define MP7_CUTOFF_RATE_DEN 5u
+
+#endif /* LIBPOPPY_EXTRA */
+
 /* First quadrant of the sine, Q15, for i = 0..256. This is the only sine
  * data in the image, and it is shared by every context, every voice and every
  * future variant of the library. */
@@ -321,10 +352,27 @@ struct mp7_context_s {
     struct mp7_voice voices[MP7_INSTR_COUNT];
     struct mp7_sequencer sequencer;
     struct poppy_mixer mixer;
+
+    /* The effective gain of every voice: its fixed Level, times the Balance
+     * and the per-instrument gain, times the pattern accent of the note that
+     * is sounding.
+     *
+     * It is kept here rather than in a local of mp7_process() because it also
+     * changes when a column fires, which can happen in the middle of a
+     * block. Folding the accent in here keeps the per-sample path down to a
+     * single multiply, the same as the preset-only build. */
+    int32_t voice_gain_q16[MP7_INSTR_COUNT];
+
     uint8_t guiro_manual_gated;             /* the caller's own Guiro note-on */
     uint8_t guiro_open;                     /* the Guiro voice is gated now */
 #ifdef LIBPOPPY_EXTRA
     struct mp7_user_slot user_patterns[MP7_USER_PATTERN_COUNT];
+
+    /* User-modifiable synthesis parameters, reset by mp7_reset(). */
+    int32_t accent_gain_q16;       /* accent column gain multiplier, Q16 */
+    int32_t snare1_decay_q16;      /* Snare 1 decay time multiplier, Q16 */
+    uint32_t snare1_bandpass_hz;   /* Snare 1 band-pass centre frequency */
+    uint32_t hihat_highpass_hz;    /* Hihat high-pass cut-off frequency */
 #endif
 };
 
@@ -341,6 +389,23 @@ void mp7_voice_init_all(struct mp7_context_s *ctx);
 void mp7_voice_trigger(struct mp7_voice *voice);
 void mp7_voice_release(struct mp7_voice *voice);
 int64_t mp7_voice_process(struct mp7_voice *voice);
+
+/* The effective gain of one voice, and the refresh of the cached copy in the
+ * context.
+ *
+ * The gain is the voice's fixed Level, times the Balance of its group, times
+ * the per-instrument gain and, in an extended build, times the accent of the
+ * note that is sounding. The order of the multiplies is fixed, because each
+ * one truncates. */
+int32_t mp7_voice_gain_q16(const struct mp7_context_s *ctx,
+                           const struct mp7_voice *voice);
+void mp7_voice_refresh_gain(struct mp7_context_s *ctx, mp7_instr instr);
+
+#ifdef LIBPOPPY_EXTRA
+void mp7_voice_apply_snare1_decay(struct mp7_context_s *ctx);
+void mp7_voice_apply_snare1_cutoff(struct mp7_context_s *ctx);
+void mp7_voice_apply_hihat_cutoff(struct mp7_context_s *ctx);
+#endif /* LIBPOPPY_EXTRA */
 
 int64_t mp7_engine_process(struct mp7_voice *voice);
 
@@ -369,10 +434,17 @@ int32_t poppy_env_coef_us(uint32_t time_us, uint32_t sample_rate);
 void poppy_biquad_set_highpass(struct poppy_biquad *filter,
                                uint32_t freq_hz,
                                uint32_t sample_rate);
+void poppy_biquad_set_highpass_coeffs(struct poppy_biquad *filter,
+                                      uint32_t freq_hz,
+                                      uint32_t sample_rate);
 void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
                                uint32_t freq_hz,
                                uint32_t res_q88,
                                uint32_t sample_rate);
+void poppy_biquad_set_bandpass_coeffs(struct poppy_biquad *filter,
+                                      uint32_t freq_hz,
+                                      uint32_t res_q88,
+                                      uint32_t sample_rate);
 int32_t poppy_biquad_process(struct poppy_biquad *filter, int32_t sample_q31);
 int64_t poppy_softclip_q31(int64_t sample_q31);
 

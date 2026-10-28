@@ -68,9 +68,15 @@ mp7_destroy_context(ctx);
 Only the panel controls are exposed, plus a per-instrument gain: master
 Volume, Balance, instrument gain, tempo and rhythm selection. The instrument
 gain defaults to 0.5 for Tambourine, Guiro and Quijada (the panel's Additional
-Volume faders) and to 1.0 for every other instrument. Synthesis parameters
-(frequency, envelope times, filter settings and so on) are fixed constants
-inside the engines. Gains are linear Q16 values: 1.0 is `65536`.
+Volume faders) and to 1.0 for every other instrument. Gains are linear Q16
+values: 1.0 is `65536`.
+
+Synthesis parameters (frequency, envelope times, filter settings and so on)
+are fixed constants inside the engines, so every instrument sounds as it does
+on the original unit. The extended build adds a few run-time tweaks on top of
+them: the accent lift of an accented pattern column, the Snare 1 decay time,
+and the Snare 1 band-pass and Hihat high-pass cut-off frequencies. See
+[Synthesis tweaks](#synthesis-tweaks).
 
 Rhythm selection mirrors the panel: a bank A/B switch and a 10-bit mask of
 the pressed rhythm buttons. A selection applies immediately by default; OR
@@ -161,3 +167,34 @@ preset source. A pattern that is playing changes with the pattern.
 With no button pressed the user source keeps the transport running and stays
 silent: the shared percussion layer belongs to the preset source, and a user
 pattern carries its own percussion lines.
+
+## Synthesis tweaks
+
+The extended build (`LIBPOPPY_EXTRA`, which is the default) exposes a few
+synthesis parameters that the original unit keeps fixed. They are not panel
+controls, and they start from the factory values, so a context that never
+touches them sounds exactly like the preset build.
+
+```c
+mp7_set_accent_gain(ctx, 78643);    /* accented columns, 1.2x (Q16 units) */
+mp7_set_snare1_decay(ctx, 65536);   /* Snare 1 decay, 1.0x (Q16 units) */
+mp7_set_snare1_cutoff(ctx, 5500);   /* Snare 1 band-pass, Hz */
+mp7_set_hihat_cutoff(ctx, 1000);    /* Hihat high-pass, Hz */
+```
+
+The accent gain applies to user-pattern columns that set the
+`MP7_PATTERN_ACCENT` bit, and is read when the column fires, so a change
+takes effect on the notes triggered after it. The Snare 1 decay scales the
+factory decay time; a note that is already sounding keeps playing and decays
+at the new rate. The two cut-offs move the Snare 1 band-pass centre and the
+Hihat high-pass.
+
+None of them costs anything per sample: the accent is folded into the gain
+the mixer already applies to a voice, and the other three only recompute
+coefficients between blocks.
+
+The cut-offs are also limited to two fifths of the sample rate, because a
+biquad is only stable below Nyquist. At 44100 Hz that limit is above
+15000 Hz, so the whole documented range is available at the default rate.
+
+`mp7_reset()` restores the factory defaults for all of them.

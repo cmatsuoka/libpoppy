@@ -393,8 +393,11 @@ static void fire_column(struct mp7_context_s *ctx)
                 struct mp7_voice *voice = &ctx->voices[instr];
 
                 voice->accent_gain_q16 = accented
-                    ? MP7_PATTERN_ACCENT_GAIN_Q16
+                    ? ctx->accent_gain_q16
                     : POPPY_Q16_ONE;
+                /* The accent is part of the voice's gain, so the cached
+                 * gain has to follow it. */
+                mp7_voice_refresh_gain(ctx, (mp7_instr)instr);
                 mp7_voice_trigger(voice);
             }
         }

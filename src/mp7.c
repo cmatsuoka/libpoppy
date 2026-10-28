@@ -65,6 +65,16 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
     }
     c->sample_rate = sample_rate;
 
+#ifdef LIBPOPPY_EXTRA
+    /* Extended-build synthesis defaults. These must match the factory voice
+     * configuration in src/mp7_voice.c. Set them before mp7_voice_init_all()
+     * so the voice setup can apply them. */
+    c->accent_gain_q16 = MP7_PATTERN_ACCENT_GAIN_Q16;
+    c->snare1_decay_q16 = POPPY_Q16_ONE;
+    c->snare1_bandpass_hz = MP7_SNARE1_BANDPASS_HZ;
+    c->hihat_highpass_hz = MP7_HIHAT_HIGHPASS_HZ;
+#endif
+
     mp7_voice_init_all(c);
     mp7_pattern_init(c);
     poppy_mixer_init(&c->mixer);
@@ -114,21 +124,15 @@ void mp7_reset(mp7_context ctx)
 }
 
 /* Effective per-voice gain: its fixed Level, scaled by Balance and by the
- * per-instrument gain. */
-static int32_t voice_gain_q16(const struct mp7_context_s *c, const struct mp7_voice *voice)
-{
-    int32_t gain = voice->level_q16;
-
-    gain = poppy_mul_q16(gain, poppy_mixer_balance_gain_q16(&c->mixer, voice->balance_group));
-    gain = poppy_mul_q16(gain, c->mixer.instr_gain_q16[voice->instr]);
-
-    return gain;
-}
-
+ * per-instrument gain, and by the accent of the note that is sounding.
+ *
+ * The gain lives in the context rather than in a local, because it also
+ * changes when a column fires, which can happen in the middle of a block.
+ * It is refreshed there, and whenever a note is triggered, so the per-sample
+ * path only has to apply it. */
 void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
-    int32_t voice_gain[MP7_INSTR_COUNT];
     size_t frame;
     unsigned int instr;
 
@@ -145,7 +149,7 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
      * and a control cannot change while a block is being rendered, so the
      * gain is computed once per block instead of once per sample. */
     for (instr = 0u; instr < (unsigned int)MP7_INSTR_COUNT; instr++) {
-        voice_gain[instr] = voice_gain_q16(c, &c->voices[instr]);
+        mp7_voice_refresh_gain(c, (mp7_instr)instr);
     }
 
     for (frame = 0u; frame < frames; frame++) {
@@ -171,16 +175,7 @@ void mp7_process(mp7_context ctx, int16_t *stereo_out, size_t frames)
                 continue;
             }
 
-#ifdef LIBPOPPY_EXTRA
-            {
-                int32_t accented_gain = poppy_mul_q16(voice_gain[instr],
-                                                      voice->accent_gain_q16);
-
-                sample = poppy_mul_q31_gain(sample, accented_gain);
-            }
-#else
-            sample = poppy_mul_q31_gain(sample, voice_gain[instr]);
-#endif
+            sample = poppy_mul_q31_gain(sample, c->voice_gain_q16[instr]);
             sum_left += poppy_mixer_pan_left(sample, voice->pan_q16);
             sum_right += poppy_mixer_pan_right(sample, voice->pan_q16);
         }
@@ -213,6 +208,7 @@ void mp7_trigger(mp7_context ctx, mp7_instr instr, uint8_t velocity)
 
 #ifdef LIBPOPPY_EXTRA
     c->voices[instr].accent_gain_q16 = POPPY_Q16_ONE;
+    mp7_voice_refresh_gain(c, instr);
 #endif
     mp7_voice_trigger(&c->voices[instr]);
 }
@@ -529,6 +525,80 @@ mp7_pattern_source mp7_get_pattern_source(const void *ctx)
         return MP7_PATTERN_SOURCE_PRESET;
     }
     return MP7_PATTERN_SOURCE_USER;
+}
+
+void mp7_set_accent_gain(mp7_context ctx, int32_t gain_q16)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    c->accent_gain_q16 = poppy_clamp_i32(gain_q16, POPPY_Q16_ONE / 2,
+                                          2 * POPPY_Q16_ONE);
+}
+
+int32_t mp7_get_accent_gain(const void *ctx)
+{
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return 0;
+    }
+
+    return c->accent_gain_q16;
+}
+
+void mp7_set_snare1_decay(mp7_context ctx, int32_t decay_q16)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    c->snare1_decay_q16 = poppy_clamp_i32(decay_q16, POPPY_Q16_ONE / 4,
+                                          4 * POPPY_Q16_ONE);
+    mp7_voice_apply_snare1_decay(c);
+}
+
+void mp7_set_snare1_cutoff(mp7_context ctx, uint32_t freq_hz)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    if (freq_hz < MP7_SNARE1_CUTOFF_MIN_HZ) {
+        freq_hz = MP7_SNARE1_CUTOFF_MIN_HZ;
+    }
+    if (freq_hz > MP7_SNARE1_CUTOFF_MAX_HZ) {
+        freq_hz = MP7_SNARE1_CUTOFF_MAX_HZ;
+    }
+
+    c->snare1_bandpass_hz = freq_hz;
+    mp7_voice_apply_snare1_cutoff(c);
+}
+
+void mp7_set_hihat_cutoff(mp7_context ctx, uint32_t freq_hz)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    if (freq_hz < MP7_HIHAT_CUTOFF_MIN_HZ) {
+        freq_hz = MP7_HIHAT_CUTOFF_MIN_HZ;
+    }
+    if (freq_hz > MP7_HIHAT_CUTOFF_MAX_HZ) {
+        freq_hz = MP7_HIHAT_CUTOFF_MAX_HZ;
+    }
+
+    c->hihat_highpass_hz = freq_hz;
+    mp7_voice_apply_hihat_cutoff(c);
 }
 #endif /* LIBPOPPY_EXTRA */
 

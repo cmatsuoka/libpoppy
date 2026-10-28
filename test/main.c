@@ -945,6 +945,29 @@ static int command_pattern(void)
 
 #ifdef LIBPOPPY_EXTRA
 
+/* The largest pole magnitude of a biquad. A filter is stable only while
+ * this stays below 1: at 1 the poles sit on the unit circle and the filter
+ * rings without decaying, and above it the state diverges. */
+static double biquad_pole_radius(const struct poppy_biquad *filter)
+{
+    double a1 = (double)filter->a1 / 1073741824.0;
+    double a2 = (double)filter->a2 / 1073741824.0;
+    double real = -a1 / 2.0;
+    double disc = (a1 * a1 / 4.0) - a2;
+
+    if (disc < 0.0) {
+        /* Complex roots: the radius is the square root of their product. */
+        return sqrt((real * real) + (-disc));
+    }
+    {
+        double root = sqrt(disc);
+        double p1 = fabs(real + root);
+        double p2 = fabs(real - root);
+
+        return (p1 > p2) ? p1 : p2;
+    }
+}
+
 /* A user pattern with one instrument mask on every column of its period. */
 static void fill_user_pattern(struct mp7_user_pattern *pattern,
                               uint16_t mask,
@@ -1349,6 +1372,311 @@ static int command_user(void)
 
         if ((unsigned int)failures == failures_before) {
             ok("Guiro ignores the user pattern accent bit");
+        }
+    }
+
+    /* The accent has to reach the mix as soon as the column fires.
+     *
+     * The voice's gain is cached, because the per-sample path only applies
+     * it, so a note that is already sounding would keep the old accent
+     * until the next trigger if the cache were not refreshed here. */
+    {
+        struct mp7_context_s *live = context_new();
+        struct mp7_user_pattern accented;
+        int16_t stereo[512 * 2];
+        int32_t base_gain;
+        int32_t expected_gain;
+        int32_t peak_plain = 0;
+        int32_t peak_accented = 0;
+        unsigned int i;
+
+        mp7_init(live, sample_rate);
+        memset(&accented, 0, sizeof(accented));
+        accented.enable = ~(uint64_t)0;
+        accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
+        accented.triplet = false;
+        accented.notes[0] = (uint16_t)((1u << MP7_INSTR_BASS) |
+                                       MP7_PATTERN_ACCENT);
+
+        mp7_set_user_pattern(live, 0u, &accented);
+        mp7_select_rhythm(live, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        mp7_set_pattern_source(live, MP7_PATTERN_SOURCE_USER);
+
+        /* The column fires in the middle of the block, so the note starts
+         * after the gain was last computed for the block. */
+        live->sequencer.sub_step_samples = 100u;
+
+        mp7_process(live, stereo, 512);        /* the column fires here */
+
+        if (live->voices[MP7_INSTR_BASS].accent_gain_q16 !=
+            MP7_PATTERN_ACCENT_GAIN_Q16) {
+            fail("the accented column did not fire inside the block");
+        }
+
+        base_gain = poppy_mul_q16(
+            live->voices[MP7_INSTR_BASS].level_q16,
+            poppy_mul_q16(
+                poppy_mixer_balance_gain_q16(&live->mixer,
+                                             live->voices[MP7_INSTR_BASS].balance_group),
+                live->mixer.instr_gain_q16[MP7_INSTR_BASS]));
+        expected_gain = poppy_mul_q16(base_gain, MP7_PATTERN_ACCENT_GAIN_Q16);
+
+        if (live->voice_gain_q16[MP7_INSTR_BASS] != expected_gain) {
+            fail("the accent did not reach the voice gain when the column fired");
+        }
+
+        for (i = 0u; i < 512u * 2u; i++) {
+            int32_t value = (stereo[i] < 0) ? -stereo[i] : stereo[i];
+
+            if (value > peak_accented) {
+                peak_accented = value;
+            }
+        }
+
+        /* The same note, without the accent. */
+        mp7_init(live, sample_rate);
+        mp7_trigger(live, MP7_INSTR_BASS, 100);
+        mp7_process(live, stereo, 512);
+        for (i = 0u; i < 512u * 2u; i++) {
+            int32_t value = (stereo[i] < 0) ? -stereo[i] : stereo[i];
+
+            if (value > peak_plain) {
+                peak_plain = value;
+            }
+        }
+
+        if ((peak_plain == 0) || (peak_accented <= peak_plain)) {
+            fail("the accented note is not louder than the plain one");
+        } else {
+            int32_t expected_peak = (peak_plain * MP7_PATTERN_ACCENT_GAIN_Q16) >> 16;
+
+            /* The output is rounded to Q15, so the peak can be a unit or two
+             * off the exact ratio. */
+            if ((peak_accented < expected_peak - 2) ||
+                (peak_accented > expected_peak + 2)) {
+                fail("the accented note is not louder by the accent factor");
+            } else {
+                ok("an accent lifts the note in the same block it fires");
+            }
+        }
+
+        free(live);
+    }
+
+    /* Extended synthesis controls. */
+    {
+        unsigned int failures_before = (unsigned int)failures;
+
+        /* Accent gain clamps to 0.5..2.0, has a matching getter, and
+         * changes the accented column. */
+        mp7_init(ctx, sample_rate);
+        if (mp7_get_accent_gain(ctx) != MP7_PATTERN_ACCENT_GAIN_Q16) {
+            fail("accent gain getter did not return the default");
+        }
+        if (mp7_get_accent_gain(0) != 0) {
+            fail("accent gain getter did not return 0 for a null context");
+        }
+        mp7_set_accent_gain(ctx, 3 * POPPY_Q16_ONE);
+        if (mp7_get_accent_gain(ctx) != 2 * POPPY_Q16_ONE) {
+            fail("accent gain is not clamped to 2.0");
+        }
+        mp7_set_accent_gain(ctx, POPPY_Q16_ONE / 4);
+        if (mp7_get_accent_gain(ctx) != POPPY_Q16_ONE / 2) {
+            fail("accent gain is not clamped to 0.5");
+        }
+
+        {
+            struct mp7_user_pattern accented;
+            unsigned int i;
+
+            memset(&accented, 0, sizeof(accented));
+            accented.enable = ~(uint64_t)0;
+            accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
+            accented.notes[0] = (uint16_t)((1u << MP7_INSTR_BASS) |
+                                            MP7_PATTERN_ACCENT);
+            accented.notes[1] = (uint16_t)((1u << MP7_INSTR_BASS) |
+                                            MP7_PATTERN_ACCENT);
+            mp7_set_user_pattern(ctx, 0u, &accented);
+            mp7_select_rhythm(ctx, MP7_BANK_A,
+                              mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+            mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+            ctx->sequencer.sub_step_samples = 1u;
+
+            mp7_set_accent_gain(ctx, POPPY_Q16_ONE);
+            mp7_pattern_tick(ctx);                 /* fire column 0 */
+            if (ctx->voices[MP7_INSTR_BASS].accent_gain_q16 != POPPY_Q16_ONE) {
+                fail("accent gain 1.0 did not take effect");
+            }
+
+            mp7_set_accent_gain(ctx, POPPY_Q16_ONE / 2);
+            for (i = 0u; i < 3u; i++) {            /* advance to column 1 */
+                mp7_pattern_tick(ctx);
+            }
+            mp7_pattern_tick(ctx);                 /* fire column 1 */
+            if (ctx->voices[MP7_INSTR_BASS].accent_gain_q16 !=
+                POPPY_Q16_ONE / 2) {
+                fail("accent gain change did not reach the voice");
+            }
+        }
+
+        /* Snare 1 decay multiplier. */
+        mp7_init(ctx, sample_rate);
+        {
+            int32_t default_decay = ctx->voices[MP7_INSTR_SNARE_1].amp_env.decay_coef;
+
+            mp7_set_snare1_decay(ctx, 2 * POPPY_Q16_ONE);
+            if (ctx->voices[MP7_INSTR_SNARE_1].amp_env.decay_coef >=
+                default_decay) {
+                fail("doubling Snare 1 decay did not lengthen the decay");
+            }
+            mp7_set_snare1_decay(ctx, POPPY_Q16_ONE / 2);
+            if (ctx->voices[MP7_INSTR_SNARE_1].amp_env.decay_coef <=
+                default_decay) {
+                fail("halving Snare 1 decay did not shorten the decay");
+            }
+        }
+
+        mp7_set_snare1_decay(ctx, 8 * POPPY_Q16_ONE);
+        if (ctx->snare1_decay_q16 != 4 * POPPY_Q16_ONE) {
+            fail("Snare 1 decay multiplier is not clamped to 4.0");
+        }
+
+        /* Snare 1 band-pass frequency. */
+        mp7_init(ctx, sample_rate);
+        {
+            int32_t default_b0 = ctx->voices[MP7_INSTR_SNARE_1].bandpass.b0;
+
+            mp7_set_snare1_cutoff(ctx, 10000u);
+            if (ctx->snare1_bandpass_hz != 10000u) {
+                fail("Snare 1 cut-off frequency was not stored");
+            }
+            if (ctx->voices[MP7_INSTR_SNARE_1].bandpass.b0 == default_b0) {
+                fail("Snare 1 cut-off frequency change did not update the bandpass");
+            }
+
+            mp7_set_snare1_cutoff(ctx, 500u);
+            if (ctx->snare1_bandpass_hz != 1000u) {
+                fail("Snare 1 cut-off frequency is not clamped to the minimum");
+            }
+        }
+
+        /* Hihat high-pass frequency. */
+        mp7_init(ctx, sample_rate);
+        {
+            int32_t default_b0 = ctx->voices[MP7_INSTR_HIHAT].highpass.b0;
+
+            mp7_set_hihat_cutoff(ctx, 5000u);
+            if (ctx->hihat_highpass_hz != 5000u) {
+                fail("Hihat cut-off frequency was not stored");
+            }
+            if (ctx->voices[MP7_INSTR_HIHAT].highpass.b0 == default_b0) {
+                fail("Hihat cut-off frequency change did not update the highpass");
+            }
+
+            mp7_set_hihat_cutoff(ctx, 20000u);
+            if (ctx->hihat_highpass_hz != 15000u) {
+                fail("Hihat cut-off frequency is not clamped to the maximum");
+            }
+        }
+
+        /* mp7_reset() restores the synthesis defaults. */
+        mp7_set_accent_gain(ctx, POPPY_Q16_ONE / 2);
+        mp7_set_snare1_decay(ctx, 4 * POPPY_Q16_ONE);
+        mp7_set_snare1_cutoff(ctx, 10000u);
+        mp7_set_hihat_cutoff(ctx, 5000u);
+        mp7_reset(ctx);
+        if ((mp7_get_accent_gain(ctx) != MP7_PATTERN_ACCENT_GAIN_Q16) ||
+            (ctx->snare1_decay_q16 != POPPY_Q16_ONE) ||
+            (ctx->snare1_bandpass_hz != MP7_SNARE1_BANDPASS_HZ) ||
+            (ctx->hihat_highpass_hz != MP7_HIHAT_HIGHPASS_HZ)) {
+            fail("mp7_reset() did not restore the extended synthesis defaults");
+        } else {
+            ok("mp7_reset() restores the extended synthesis defaults");
+        }
+
+        /* A null context is ignored by every setter. */
+        mp7_set_accent_gain(0, POPPY_Q16_ONE);
+        mp7_set_snare1_decay(0, POPPY_Q16_ONE);
+        mp7_set_snare1_cutoff(0, 1000u);
+        mp7_set_hihat_cutoff(0, 1000u);
+        ok("the extended synthesis setters ignore a null context");
+
+        if ((unsigned int)failures == failures_before) {
+            ok("extended synthesis controls clamp, apply and reset");
+        }
+    }
+
+    /* A decay change must not cut off a note that is already sounding. */
+    {
+        struct mp7_context_s *live = context_new();
+        struct mp7_voice *snare = &live->voices[MP7_INSTR_SNARE_1];
+        unsigned int i;
+        int still_playing = 1;
+
+        mp7_init(live, 44100);
+        mp7_voice_trigger(snare);
+        for (i = 0u; i < 2000u; i++) {
+            mp7_voice_process(snare);
+        }
+
+        /* The note is well into its decay when the change arrives. */
+        if (snare->amp_env.stage != POPPY_ENV_DECAY) {
+            fail("the Snare 1 note did not reach its decay stage");
+            still_playing = 0;
+        }
+
+        mp7_set_snare1_decay(live, 2 * POPPY_Q16_ONE);
+
+        if (still_playing) {
+            if (!snare->active) {
+                fail("a decay change deactivated the Snare 1 voice");
+                still_playing = 0;
+            } else if (snare->amp_env.stage != POPPY_ENV_DECAY) {
+                fail("a decay change reset the Snare 1 envelope");
+                still_playing = 0;
+            } else if (mp7_voice_process(snare) == 0) {
+                fail("a decay change silenced the Snare 1 note");
+                still_playing = 0;
+            }
+        }
+
+        if (still_playing) {
+            ok("a decay change does not cut off a sounding note");
+        }
+
+        free(live);
+    }
+
+    /* The cut-offs must stay below the sample rate's Nyquist frequency at
+     * any rate, or the biquad becomes unstable and the voice buzzes. */
+    {
+        static const uint32_t rates[] = {8000u, 16000u, 22050u, 32000u,
+                                          44100u, 48000u};
+        unsigned int r;
+        int all_stable = 1;
+
+        for (r = 0u; r < (sizeof(rates) / sizeof(rates[0])); r++) {
+            struct mp7_context_s *low = context_new();
+            double hp_pole;
+            double bp_pole;
+
+            mp7_init(low, rates[r]);
+            mp7_set_snare1_cutoff(low, 15000u);
+            mp7_set_hihat_cutoff(low, 15000u);
+
+            hp_pole = biquad_pole_radius(&low->voices[MP7_INSTR_HIHAT].highpass);
+            bp_pole = biquad_pole_radius(&low->voices[MP7_INSTR_SNARE_1].bandpass);
+
+            if ((hp_pole >= 1.0) || (bp_pole >= 1.0)) {
+                fail("a cut-off above Nyquist made the biquad unstable");
+                all_stable = 0;
+            }
+            free(low);
+        }
+
+        if (all_stable) {
+            ok("the cut-offs stay stable at every sample rate");
         }
     }
 

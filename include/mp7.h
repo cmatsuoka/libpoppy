@@ -393,6 +393,57 @@ void mp7_set_pattern_source(mp7_context ctx, mp7_pattern_source source);
 
 /* The set of patterns the sequencer plays. */
 mp7_pattern_source mp7_get_pattern_source(const void *ctx);
+
+/* ---------------------------------------------------------------------------
+ * Extended build: accent intensity and per-voice synthesis tweaks.
+ *
+ * These controls are not part of the original panel; they are provided for
+ * hosts that want to shape the sound beyond the factory defaults. All of
+ * them are reset to their defaults by mp7_reset().
+ * ------------------------------------------------------------------------ */
+
+/* Set the accent gain multiplier for accented user-pattern columns.
+ *
+ * gain_q16 is in Q16 units (1.0 = 65536). The default is 1.2 (78643).
+ * The control range is 0.5..2.0, so 1.0 means "no accent boost" and
+ * values above it make accented columns louder. Clamped to 0.5..2.0.
+ *
+ * The value is read when a column fires, so a change takes effect on
+ * the notes triggered after it, not on the ones already sounding. */
+void mp7_set_accent_gain(mp7_context ctx, int32_t gain_q16);
+
+/* Return the current accent gain multiplier in Q16 units.
+ *
+ * Returns 0 when `ctx` is null. */
+int32_t mp7_get_accent_gain(const void *ctx);
+
+/* Set the Snare 1 decay time multiplier.
+ *
+ * 1.0 is the factory decay. Values below 1.0 shorten the decay; values
+ * above 1.0 lengthen it. Clamped to 0.25..4.0.
+ *
+ * A note that is already sounding is not cut off: it keeps playing and
+ * decays at the new rate from the next sample. */
+void mp7_set_snare1_decay(mp7_context ctx, int32_t decay_q16);
+
+/* Set the Snare 1 band-pass filter cut-off frequency in Hz.
+ *
+ * The factory default is 5500 Hz. Clamped to 1000..15000.
+ *
+ * The filter is stable only below the sample rate's Nyquist
+ * frequency, so the cut-off is also limited to two fifths of the
+ * sample rate. At 44100 Hz that is above 15000 Hz, so the whole
+ * documented range is available at the default rate. */
+void mp7_set_snare1_cutoff(mp7_context ctx, uint32_t freq_hz);
+
+/* Set the Hihat high-pass filter cut-off frequency in Hz.
+ *
+ * The factory default is 1000 Hz. Clamped to 500..15000.
+ *
+ * As with the Snare 1 cut-off, the filter is stable only below
+ * Nyquist, so the cut-off is also limited to two fifths of the
+ * sample rate. */
+void mp7_set_hihat_cutoff(mp7_context ctx, uint32_t freq_hz);
 #endif /* LIBPOPPY_EXTRA */
 
 #ifdef __cplusplus

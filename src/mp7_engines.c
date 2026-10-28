@@ -134,9 +134,11 @@ static void biquad_clear(struct poppy_biquad *filter)
     filter->y2 = 0;
 }
 
-void poppy_biquad_set_highpass(struct poppy_biquad *filter,
-                               uint32_t freq_hz,
-                               uint32_t sample_rate)
+/* Compute high-pass coefficients without touching the filter state, so a
+ * run-time frequency change does not reset the filter memory. */
+void poppy_biquad_set_highpass_coeffs(struct poppy_biquad *filter,
+                                    uint32_t freq_hz,
+                                    uint32_t sample_rate)
 {
     const int32_t q88 = 181; /* 1/sqrt(2), rounded to Q8.8 */
     uint32_t phase = filter_phase(freq_hz, sample_rate);
@@ -159,13 +161,21 @@ void poppy_biquad_set_highpass(struct poppy_biquad *filter,
     filter->b2 = b0;
     filter->a1 = (int32_t)(-2LL * c);
     filter->a2 = poppy_mul_q30(Q30_ONE - (int32_t)alpha, (int32_t)k);
+}
+
+void poppy_biquad_set_highpass(struct poppy_biquad *filter,
+                               uint32_t freq_hz,
+                               uint32_t sample_rate)
+{
+    poppy_biquad_set_highpass_coeffs(filter, freq_hz, sample_rate);
     biquad_clear(filter);
 }
 
-void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
-                               uint32_t freq_hz,
-                               uint32_t res_q88,
-                               uint32_t sample_rate)
+/* Compute band-pass coefficients without touching the filter state. */
+void poppy_biquad_set_bandpass_coeffs(struct poppy_biquad *filter,
+                                      uint32_t freq_hz,
+                                      uint32_t res_q88,
+                                      uint32_t sample_rate)
 {
     uint32_t phase = filter_phase(freq_hz, sample_rate);
     int32_t sin30 = (int32_t)poppy_sine_interp(phase) * 32768;
@@ -195,6 +205,14 @@ void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
     filter->b2 = -b0;
     filter->a1 = (int32_t)(-2LL * c);
     filter->a2 = poppy_mul_q30(Q30_ONE - (int32_t)alpha, (int32_t)k);
+}
+
+void poppy_biquad_set_bandpass(struct poppy_biquad *filter,
+                               uint32_t freq_hz,
+                               uint32_t res_q88,
+                               uint32_t sample_rate)
+{
+    poppy_biquad_set_bandpass_coeffs(filter, freq_hz, res_q88, sample_rate);
     biquad_clear(filter);
 }
 
