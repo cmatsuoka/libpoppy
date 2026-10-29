@@ -65,19 +65,6 @@ mp7_process(ctx, block, 128);      /* from the audio ISR */
 mp7_destroy_context(ctx);
 ```
 
-Only the panel controls are exposed, plus a per-instrument gain: master
-Volume, Balance, instrument gain, tempo and rhythm selection. The instrument
-gain defaults to 0.5 for Tambourine, Guiro and Quijada (the panel's Additional
-Volume faders) and to 1.0 for every other instrument. Gains are linear Q16
-values: 1.0 is `65536`.
-
-Synthesis parameters (frequency, envelope times, filter settings and so on)
-are fixed constants inside the engines, so every instrument sounds as it does
-on the original unit. The extended build adds a few run-time tweaks on top of
-them: the accent lift of an accented pattern column, the Snare 1 decay time,
-and the Snare 1 band-pass and Hihat high-pass cut-off frequencies. See
-[Synthesis tweaks](#synthesis-tweaks).
-
 Rhythm selection mirrors the panel: a bank A/B switch and a 10-bit mask of
 the pressed rhythm buttons. A selection applies immediately by default; OR
 `MP7_APPLY_NEXT_CYCLE` into the mask to defer it to the next pattern cycle. A

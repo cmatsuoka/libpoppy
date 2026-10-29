@@ -277,7 +277,11 @@ void mp7_get_panel_state(const void *ctx, struct mp7_panel_state *out);
  *
  * instr_gain is a per-instrument gain: 0..1. Tambourine, Guiro and Quijada
  * default to 0.5, matching their panel Additional Volume faders; every other
- * instrument defaults to 1.0. */
+ * instrument defaults to 1.0.
+ *
+ * The Cowbell and the two Bongos carry a fixed half level, so the top of
+ * their instrument gain range is their halved level, not the level of the
+ * other voices. */
 void mp7_set_volume(mp7_context ctx, int32_t volume_q16);
 void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16);

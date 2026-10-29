@@ -1955,9 +1955,17 @@ static int command_mixer(void)
         }
     }
     for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
-        if ((ctx->voices[i].level_q16 != POPPY_Q16_ONE) ||
+        int32_t expected_level = POPPY_Q16_ONE;
+
+        /* The Cowbell and the two Bongos carry a fixed half Level. */
+        if ((i == (unsigned int)MP7_INSTR_COWBELL) ||
+            (i == (unsigned int)MP7_INSTR_SMALL_BONGO) ||
+            (i == (unsigned int)MP7_INSTR_LARGE_BONGO)) {
+            expected_level = POPPY_Q16_ONE / 2;
+        }
+        if ((ctx->voices[i].level_q16 != expected_level) ||
             (ctx->voices[i].pan_q16 != POPPY_Q16_ONE / 2)) {
-            fail("a voice does not default to Level 1.0 / Pan 0.5");
+            fail("a voice does not have its factory Level / Pan");
             break;
         }
     }
@@ -2256,6 +2264,62 @@ static int command_mixer(void)
             fail("an instrument gain changed another voice");
         } else {
             ok("instrument gains are independent across all 15 instruments");
+        }
+    }
+
+    /* The Cowbell and the two Bongos carry a fixed half Level. Their signal
+     * is half as loud, and the per-instrument gain keeps its whole 0..1 range
+     * on top of the halved signal: its top is the halved signal, not more. */
+    {
+        static const mp7_instr halved[3] = {
+            MP7_INSTR_COWBELL, MP7_INSTR_SMALL_BONGO, MP7_INSTR_LARGE_BONGO
+        };
+        unsigned int h;
+
+        for (h = 0u; h < 3u; h++) {
+            int half_peak;
+            int full_peak;
+            int half_gain_peak;
+
+            render_trigger(ctx, halved[h], stereo, frames);
+            half_peak = channel_peak(stereo, frames, 0u);
+
+            /* The same voice at full Level, for the reference peak. */
+            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+            ctx->voices[halved[h]].level_q16 = POPPY_Q16_ONE;
+            mp7_voice_trigger(&ctx->voices[halved[h]]);
+            mp7_process(ctx, other, frames);
+            full_peak = channel_peak(other, frames, 0u);
+
+            /* The halved signal at half the instrument gain. */
+            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+            poppy_mixer_set_instr_gain(&ctx->mixer, halved[h],
+                                       POPPY_Q16_ONE / 2);
+            mp7_voice_trigger(&ctx->voices[halved[h]]);
+            mp7_process(ctx, other, frames);
+            half_gain_peak = channel_peak(other, frames, 0u);
+
+            /* The output is rounded to Q15, so the peaks can be a unit or
+             * two off the exact ratio. */
+            if ((half_peak == 0) ||
+                (full_peak < half_peak + half_peak / 2) ||
+                (full_peak > half_peak * 2 + 4)) {
+                printf("FAIL: instrument %u is not at half Level (%d vs %d)\n",
+                       (unsigned int)halved[h], half_peak, full_peak);
+                failures++;
+                continue;
+            }
+
+            if ((half_gain_peak < half_peak / 2 - 4) ||
+                (half_gain_peak > half_peak / 2 + 4)) {
+                printf("FAIL: the instrument gain does not scale the halved "
+                       "voice %u (%d vs %d)\n",
+                       (unsigned int)halved[h], half_gain_peak, half_peak);
+                failures++;
+                continue;
+            }
+
+            ok("a halved voice keeps the instrument gain range");
         }
     }
 

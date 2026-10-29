@@ -6,6 +6,10 @@
  * and resonance in Q8.8. Level and Pan are fixed here as well, but they are
  * mixer inputs rather than synthesis parameters: the mixer applies them
  * together with the panel's Volume, Balance and per-instrument gains.
+ *
+ * The fixed Level is the voice's own trim. It multiplies the per-instrument
+ * gain, so halving it halves the signal while the instrument gain keeps its
+ * whole 0..1 range on top of the halved signal.
  */
 
 #include <string.h>
@@ -23,41 +27,45 @@ struct mp7_voice_config {
     uint32_t decay2_us;
     uint32_t density_us;
     uint16_t res_q88;
+    int32_t level_q16;
     int32_t level2_q16;
     int32_t tick_q16;
 };
 
+/* The Level column is the voice's own trim. The Cowbell and the two Bongos
+ * sit at half Level, because they are loud in the mix next to the other
+ * voices. */
 static const struct mp7_voice_config voice_config[MP7_INSTR_COUNT] = {
     /* Bass */
-    { MP7_ENGINE_SINE_AD,     65u,    0u,    0u,    0u,  1000u, 200000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD,     65u,    0u,    0u,    0u,  1000u, 200000u,     0u,    0u,    0u, 65536,     0,     0 },
     /* Snare 1 */
-    { MP7_ENGINE_NOISE, MP7_SNARE1_BANDPASS_HZ, 0u, 0u, 800u, 1000u, 400000u, 0u, 0u, 102u, 0, 32768 },
+    { MP7_ENGINE_NOISE, MP7_SNARE1_BANDPASS_HZ, 0u, 0u, 800u, 1000u, 400000u, 0u, 0u, 102u, 65536, 0, 32768 },
     /* Snare 2 */
-    { MP7_ENGINE_NOISE,     5500u,    0u,    0u, 1400u,  1000u,  80000u,     0u,    0u,   77u,     0, 13107 },
+    { MP7_ENGINE_NOISE,     5500u,    0u,    0u, 1400u,  1000u,  80000u,     0u,    0u,   77u, 65536,     0, 13107 },
     /* Small Bongo */
-    { MP7_ENGINE_SINE_AD,    600u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD,    600u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u, 32768,     0,     0 },
     /* Large Bongo */
-    { MP7_ENGINE_SINE_AD,    400u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD,    400u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u, 32768,     0,     0 },
     /* Conga */
-    { MP7_ENGINE_DUAL_TONE,  195u, 4600u,    0u,    0u,  1000u, 250000u,  4000u,    0u,    0u, 65536,     0 },
+    { MP7_ENGINE_DUAL_TONE,  195u, 4600u,    0u,    0u,  1000u, 250000u,  4000u,    0u,    0u, 65536, 65536,     0 },
     /* Cowbell */
-    { MP7_ENGINE_DUAL_TONE,  860u, 4600u,    0u,    0u,  1000u,  50000u,  4000u,    0u,    0u, 65536,     0 },
+    { MP7_ENGINE_DUAL_TONE,  860u, 4600u,    0u,    0u,  1000u,  50000u,  4000u,    0u,    0u, 32768, 65536,     0 },
     /* Claves */
-    { MP7_ENGINE_SINE_AD,   2120u,    0u,    0u,    0u,  1000u,   4000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD,   2120u,    0u,    0u,    0u,  1000u,   4000u,     0u,    0u,    0u, 65536,     0,     0 },
     /* Hihat */
-    { MP7_ENGINE_NOISE, 10000u, 0u, 0u, MP7_HIHAT_HIGHPASS_HZ, 10000u, 20000u, 0u, 0u, 512u, 0, 0 },
+    { MP7_ENGINE_NOISE, 10000u, 0u, 0u, MP7_HIHAT_HIGHPASS_HZ, 10000u, 20000u, 0u, 0u, 512u, 65536, 0, 0 },
     /* Rimshot */
-    { MP7_ENGINE_SINE_AD,   1650u,    0u,    0u,    0u,  1000u,   1000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD,   1650u,    0u,    0u,    0u,  1000u,   1000u,     0u,    0u,    0u, 65536,     0,     0 },
     /* Cymbal 1 */
-    { MP7_ENGINE_NOISE,     5600u,    0u,    0u, 5500u,  1000u, 200000u,     0u,    0u,  154u,     0,     0 },
+    { MP7_ENGINE_NOISE,     5600u,    0u,    0u, 5500u,  1000u, 200000u,     0u,    0u,   154u, 65536,     0,     0 },
     /* Cymbal 2 */
-    { MP7_ENGINE_NOISE,     5600u,    0u,    0u, 5500u,  1000u, 200000u,     0u,    0u,   77u,     0,     0 },
+    { MP7_ENGINE_NOISE,     5600u,    0u,    0u, 5500u,  1000u, 200000u,     0u,    0u,   77u, 65536,     0,     0 },
     /* Tambourine */
-    { MP7_ENGINE_NOISE,     4600u,    0u,    0u, 6600u, 20000u,  80000u,     0u,    0u, 2560u,     0,     0 },
+    { MP7_ENGINE_NOISE,     4600u,    0u,    0u, 6600u, 20000u,  80000u,     0u,    0u,  2560u, 65536,     0,     0 },
     /* Guiro */
-    { MP7_ENGINE_GUIRO,     4100u,    0u,   65u,    0u,  1000u,   4000u,     0u,  600u,    0u,     0,     0 },
+    { MP7_ENGINE_GUIRO,     4100u,    0u,   65u,    0u,  1000u,   4000u,     0u,  600u,    0u, 65536,     0,     0 },
     /* Quijada */
-    { MP7_ENGINE_QUIJADA,   2700u,    0u,   25u,    0u, 50000u, 300000u,     0u, 3600u,    0u,     0,     0 }
+    { MP7_ENGINE_QUIJADA,   2700u,    0u,   25u,    0u, 50000u, 300000u,     0u, 3600u,    0u, 65536,     0,     0 }
 };
 
 static void env_set(struct poppy_env *env,
@@ -82,7 +90,7 @@ static void voice_setup(struct mp7_voice *voice,
     voice->instr = instr;
     voice->engine = config->engine;
 
-    voice->level_q16 = POPPY_Q16_ONE;
+    voice->level_q16 = config->level_q16;
     voice->pan_q16 = POPPY_Q16_ONE / 2;
     voice->balance_group = POPPY_MIX_GROUP_NONE;
 #ifdef LIBPOPPY_EXTRA
