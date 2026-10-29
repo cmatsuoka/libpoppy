@@ -1955,17 +1955,9 @@ static int command_mixer(void)
         }
     }
     for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
-        int32_t expected_level = POPPY_Q16_ONE;
-
-        /* The Cowbell and the two Bongos carry a fixed half Level. */
-        if ((i == (unsigned int)MP7_INSTR_COWBELL) ||
-            (i == (unsigned int)MP7_INSTR_SMALL_BONGO) ||
-            (i == (unsigned int)MP7_INSTR_LARGE_BONGO)) {
-            expected_level = POPPY_Q16_ONE / 2;
-        }
-        if ((ctx->voices[i].level_q16 != expected_level) ||
+        if ((ctx->voices[i].level_q16 != POPPY_Q16_ONE) ||
             (ctx->voices[i].pan_q16 != POPPY_Q16_ONE / 2)) {
-            fail("a voice does not have its factory Level / Pan");
+            fail("a voice does not default to Level 1.0 / Pan 0.5");
             break;
         }
     }
@@ -2271,55 +2263,92 @@ static int command_mixer(void)
      * is half as loud, and the per-instrument gain keeps its whole 0..1 range
      * on top of the halved signal: its top is the halved signal, not more. */
     {
-        static const mp7_instr halved[3] = {
+        static const mp7_instr trimmed[3] = {
+            MP7_INSTR_COWBELL, MP7_INSTR_SMALL_BONGO, MP7_INSTR_LARGE_BONGO
+        };
+        /* An instrument of the same engine that carries no trim. */
+        static const mp7_instr plain[3] = {
+            MP7_INSTR_CONGA, MP7_INSTR_BASS, MP7_INSTR_CLAVES
+        };
+        unsigned int h;
+
+        for (h = 0u; h < 3u; h++) {
+            struct mp7_voice *voice = &ctx->voices[trimmed[h]];
+            int64_t trimmed_out[32];
+            int64_t plain_out[32];
+            unsigned int s;
+            int trimmed_ok = 1;
+
+            /* The trim sits at the engine output, so the engine of the same
+             * voice plays the untrimmed signal when the instrument is not
+             * one of the trimmed ones. */
+            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+            mp7_voice_trigger(voice);
+            for (s = 0u; s < 32u; s++) {
+                trimmed_out[s] = mp7_engine_process(voice);
+            }
+
+            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+            voice = &ctx->voices[trimmed[h]];
+            voice->instr = plain[h];
+            mp7_voice_trigger(voice);
+            for (s = 0u; s < 32u; s++) {
+                plain_out[s] = mp7_engine_process(voice);
+            }
+
+            for (s = 0u; s < 32u; s++) {
+                if (trimmed_out[s] != (plain_out[s] >> 1)) {
+                    trimmed_ok = 0;
+                    break;
+                }
+            }
+
+            if (!trimmed_ok) {
+                printf("FAIL: instrument %u is not trimmed to half level\n",
+                       (unsigned int)trimmed[h]);
+                failures++;
+                continue;
+            }
+
+            ok("a trimmed voice plays at half level");
+        }
+    }
+
+    /* The trim is on the voice, not on the gain: the per-instrument gain
+     * still scales the trimmed signal over its whole 0..1 range. */
+    {
+        static const mp7_instr trimmed[3] = {
             MP7_INSTR_COWBELL, MP7_INSTR_SMALL_BONGO, MP7_INSTR_LARGE_BONGO
         };
         unsigned int h;
 
         for (h = 0u; h < 3u; h++) {
-            int half_peak;
             int full_peak;
             int half_gain_peak;
 
-            render_trigger(ctx, halved[h], stereo, frames);
-            half_peak = channel_peak(stereo, frames, 0u);
+            render_trigger(ctx, trimmed[h], stereo, frames);
+            full_peak = channel_peak(stereo, frames, 0u);
 
-            /* The same voice at full Level, for the reference peak. */
             mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-            ctx->voices[halved[h]].level_q16 = POPPY_Q16_ONE;
-            mp7_voice_trigger(&ctx->voices[halved[h]]);
-            mp7_process(ctx, other, frames);
-            full_peak = channel_peak(other, frames, 0u);
-
-            /* The halved signal at half the instrument gain. */
-            mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
-            poppy_mixer_set_instr_gain(&ctx->mixer, halved[h],
+            poppy_mixer_set_instr_gain(&ctx->mixer, trimmed[h],
                                        POPPY_Q16_ONE / 2);
-            mp7_voice_trigger(&ctx->voices[halved[h]]);
+            mp7_voice_trigger(&ctx->voices[trimmed[h]]);
             mp7_process(ctx, other, frames);
             half_gain_peak = channel_peak(other, frames, 0u);
 
             /* The output is rounded to Q15, so the peaks can be a unit or
              * two off the exact ratio. */
-            if ((half_peak == 0) ||
-                (full_peak < half_peak + half_peak / 2) ||
-                (full_peak > half_peak * 2 + 4)) {
-                printf("FAIL: instrument %u is not at half Level (%d vs %d)\n",
-                       (unsigned int)halved[h], half_peak, full_peak);
-                failures++;
-                continue;
-            }
-
-            if ((half_gain_peak < half_peak / 2 - 4) ||
-                (half_gain_peak > half_peak / 2 + 4)) {
-                printf("FAIL: the instrument gain does not scale the halved "
+            if ((full_peak == 0) ||
+                (half_gain_peak < full_peak / 2 - 4) ||
+                (half_gain_peak > full_peak / 2 + 4)) {
+                printf("FAIL: the instrument gain does not scale the trimmed "
                        "voice %u (%d vs %d)\n",
-                       (unsigned int)halved[h], half_gain_peak, half_peak);
+                       (unsigned int)trimmed[h], half_gain_peak, full_peak);
                 failures++;
                 continue;
             }
 
-            ok("a halved voice keeps the instrument gain range");
+            ok("a trimmed voice keeps the instrument gain range");
         }
     }
 

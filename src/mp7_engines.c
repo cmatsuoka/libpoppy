@@ -291,11 +291,21 @@ static int64_t engine_sine_ad(struct mp7_voice *voice)
 {
     int32_t env = poppy_env_process(&voice->amp_env);
     int32_t sine = next_sine(&voice->body_osc);
+    int64_t out;
 
     if (voice->amp_env.stage == POPPY_ENV_IDLE) {
         voice->active = 0;
     }
-    return poppy_mul_q30_q31(env, sine);
+
+    out = poppy_mul_q30_q31(env, sine);
+
+    /* The two Bongos carry the half-level trim. */
+    if ((voice->instr == MP7_INSTR_SMALL_BONGO) ||
+        (voice->instr == MP7_INSTR_LARGE_BONGO)) {
+        out = poppy_mul_q31_gain(out, POPPY_Q16_ONE >> 1);
+    }
+
+    return out;
 }
 
 static int64_t engine_dual_tone(struct mp7_voice *voice)
@@ -314,6 +324,11 @@ static int64_t engine_dual_tone(struct mp7_voice *voice)
         (voice->aux_env.stage == POPPY_ENV_IDLE)) {
         voice->active = 0;
     }
+
+    if (voice->instr == MP7_INSTR_COWBELL) {
+        out = poppy_mul_q31_gain(out, POPPY_Q16_ONE >> 1);
+    }
+
     return out;
 }
 
