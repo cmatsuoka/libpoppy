@@ -138,14 +138,24 @@ for (unsigned int column = 0; column < 64; column++) {
         ? (uint16_t)((1u << MP7_INSTR_BASS) | (1u << MP7_INSTR_COWBELL))
         : 0;
 }
-pattern.enable = ~(uint64_t)0;  /* every column is enabled */
-pattern.notes_period = 64;      /* the grid does not repeat earlier */
-pattern.triplet = false;
+pattern.timesig = MP7_TIMESIG_4_4;  /* the metric of the grid */
+pattern.notes_period = 64;          /* the grid does not repeat earlier */
 
 mp7_set_user_pattern(ctx, 0, &pattern);  /* slot 0 = bank A, button 0 */
 mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
 mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
 ```
+
+The time signature is the only way to shape the grid: the library derives the
+step-enable mask from it, so a pattern cannot carry a mask of its own and
+cannot ask for a hole pattern the hardware does not have. The signatures are
+2/4, 3/4, 4/4, 5/4, 6/8 and 7/4, and `mp7_timesig_enable_mask()` returns the
+mask of each of them.
+
+The grid a pattern plays on follows that mask: a 2/4 or 6/8 pattern plays on
+the compound (shuffle) grid, and every other signature plays straight. There
+is no separate rate setting, so a pattern cannot ask for a shuffle on a grid
+that cannot carry one.
 
 `mp7_get_user_pattern()` reads a slot back, `mp7_set_user_pattern(ctx, index,
 NULL)` empties one, and `mp7_reset()` empties all of them and returns to the

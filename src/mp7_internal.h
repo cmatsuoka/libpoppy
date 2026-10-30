@@ -35,9 +35,9 @@
 /* Number of points in the soft-clip transfer table. */
 #define POPPY_SOFTCLIP_TABLE_SIZE 256
 
-/* A factory rhythm is a note grid plus a step-enable mask and a triplet flag.
- * The enable mask is a 64-bit word, one bit per column; columns that are
- * disabled in the combined mask take no time at all.
+/* A factory rhythm is a note grid plus a step-enable mask. The enable mask
+ * is a 64-bit word, one bit per column; columns that are disabled in the
+ * combined mask take no time at all.
  *
  * A column of the note grid is a 16-bit instrument mask: bit n is set when
  * instrument n (mp7_instr order) plays in that column, so bit 0 is the Bass
@@ -54,6 +54,63 @@
 #define MP7_PATTERN_HALF_STEPS 32
 #define MP7_PATTERN_STEPS 64
 
+/* The step-enable mask of the compound (shuffle) grid: six columns enabled,
+ * two disabled, every eight columns. The three built-in shuffle rhythms -
+ * March 2/4, March 6/8 and Slow Rock - all use this one mask, so the mask
+ * cannot tell them apart.
+ *
+ * A pattern with this mask plays on the compound grid, that is, as a
+ * shuffle; every other mask plays straight. It is the mask of the 2/4 and
+ * the 6/8 signature, and the library hands it out through
+ * mp7_timesig_enable_mask(). */
+#define MP7_PATTERN_COMPOUND_MASK UINT64_C(0x3F3F3F3F3F3F3F3F)
+
+/* The step-enable masks of the time signatures.
+ *
+ * Every pattern's mask comes from its time signature, so the masks are
+ * defined once, here, and a pattern never carries a mask of its own. The
+ * 4/4 mask enables every column; the 3/4 mask skips four columns twice in
+ * every half of the cycle; the 2/4 and the 6/8 share the compound mask,
+ * because the reference gives all three shuffle rhythms one and the same
+ * hole pattern.
+ *
+ * The 3/4 mask is the library's own: the reference's mask is this one
+ * rotated by four columns, and the rotation puts the Waltz's and the Jazz
+ * Waltz's snares on disabled columns, so those snares never sound. The
+ * value, the ASCII art in src/mp7_tables.c and the assertion in test/main.c
+ * carry the library's mask together.
+ *
+ * The 5/4 and the 7/4 masks are the library's own as well: the hardware
+ * has no such meters. They put one bar in the cycle - five beats and seven
+ * beats - and skip the columns of the cycle that are not part of it, so a
+ * bar of either meter is as long as the meter says. */
+#define MP7_ENABLE_4_4 UINT64_C(0xFFFFFFFFFFFFFFFF)
+#define MP7_ENABLE_3_4 UINT64_C(0xFF0F0FFFFF0F0FFF)
+#define MP7_ENABLE_5_4 UINT64_C(0x000000FFFFFFFFFF)
+#define MP7_ENABLE_7_4 UINT64_C(0x00FFFFFFFFFFFFFF)
+#define MP7_ENABLE_2_4 MP7_PATTERN_COMPOUND_MASK
+#define MP7_ENABLE_6_8 MP7_PATTERN_COMPOUND_MASK
+
+/* The grid a pattern plays on.
+ *
+ * The subdivision is not a setting of its own and it is not part of the
+ * public API: it follows the pattern's step-enable mask, and the mask
+ * follows the pattern's time signature. The compound mask plays compound,
+ * every other mask plays straight. */
+typedef enum {
+    MP7_SUBDIV_STRAIGHT = 0,
+    MP7_SUBDIV_COMPOUND = 1
+} mp7_subdivision;
+
+/* The compound (shuffle) grid is the one the shuffle rhythms play on, and it
+ * is the only grid that can carry a 2:1 swung eighth. The subdivision of a
+ * pattern follows its enable mask: the compound mask plays compound, every
+ * other mask plays straight. */
+static inline uint8_t mp7_mask_is_compound(uint64_t enable)
+{
+    return (enable == MP7_PATTERN_COMPOUND_MASK) ? 1u : 0u;
+}
+
 /* The fixed Tambourine/Guiro/Quijada layer. It is present in every factory
  * rhythm and keeps playing when no rhythm key is pressed. */
 #define MP7_PATTERN_PERCUSSION_MASK \
@@ -69,7 +126,6 @@ struct mp7_factory_rhythm {
     const uint16_t *notes; /* notes_period columns, bit n = instrument n plays */
     uint64_t enable;        /* bit c = column c is enabled */
     uint8_t notes_period;   /* columns in notes: 16, 32 or 64 */
-    uint8_t triplet;
 };
 
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
@@ -94,12 +150,15 @@ extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS];
  * The grid holds every instrument, the Tambourine, Guiro and Quijada
  * included, so a user pattern is a complete pattern and not a rhythm plus
  * the shared percussion layer. `used` is clear for an empty slot, which
- * plays nothing and disables no column. */
+ * plays nothing and disables no column.
+ *
+ * The slot stores the time signature and not the step-enable mask: the mask
+ * is derived from the signature, so the two cannot drift apart and a slot
+ * cannot hold a mask the hardware does not have. */
 struct mp7_user_slot {
     uint16_t notes[MP7_PATTERN_STEPS];
-    uint64_t enable;
+    uint8_t timesig;      /* mp7_timesig of the pattern */
     uint8_t notes_period;
-    uint8_t triplet;
     uint8_t used;
 };
 
@@ -301,10 +360,16 @@ struct mp7_voice {
  * combined grid: one 16-bit instrument mask per column, bit n set when
  * instrument n plays in that column.
  *
- * The sequencer triggers on sub-step boundaries. A straight column spans three
- * sub-steps and a triplet column spans four; `substep` counts the sub-steps
- * elapsed in the current column. `sub_step_pos` counts down samples to the
- * next boundary and is zero on the sample where the boundary is evaluated.
+ * The sequencer triggers on column boundaries. A column lasts a fraction of a
+ * beat: the tempo is in quarter notes per minute, and a beat holds eight
+ * straight columns (a 32nd note each) or six compound ones (an 8th-note
+ * triplet each). `column_pos` counts down the samples to the next boundary
+ * and is zero on the sample where the boundary is evaluated; `column_fired`
+ * says that the column that is running has already fired its notes.
+ *
+ * `subdivision` is the grid the combined pattern plays on. It is derived from
+ * the enable masks of the selected patterns, not from the combined mask: a
+ * compound pattern combined with a straight one plays compound.
  *
  * `pending_selected` holds a rhythm selection that is waiting for the current
  * pattern cycle to finish; `pending_valid` is set while it differs from
@@ -321,8 +386,9 @@ struct mp7_sequencer {
     uint32_t selected;                     /* bit n = mp7_rhythm n */
     uint32_t pending_selected;             /* selection for the next cycle */
     uint32_t tempo;                        /* BPM, clamped to 1..240 */
-    uint32_t sub_step_samples;             /* round(2.5 * sample_rate / tempo) */
-    uint32_t sub_step_pos;                 /* samples until the next boundary */
+    uint32_t beat_samples;                 /* round(60 * sample_rate / tempo) */
+    uint32_t column_pos;                   /* samples until the next boundary */
+    uint32_t step_remainder;               /* samples of the beat not yet handed out */
     uint32_t flash_count;                  /* monotonic lamp flash counter */
     uint64_t enable;                       /* combined step-enable mask */
     uint16_t notes[MP7_PATTERN_STEPS];     /* bit n = instrument n plays */
@@ -331,8 +397,8 @@ struct mp7_sequencer {
     uint8_t bank;                          /* applied lever position */
     uint8_t pending_bank;                  /* queued lever position */
     uint8_t column;                        /* current enabled column */
-    uint8_t substep;                       /* sub-steps elapsed in the column */
-    uint8_t triplet;
+    uint8_t column_fired;                  /* the running column has fired its notes */
+    uint8_t subdivision;                   /* mp7_subdivision of the combined grid */
     uint8_t guiro_gated;                   /* the sequencer's own Guiro gate */
     uint8_t pending_valid;
     uint8_t running;                       /* transport: false after a stop */

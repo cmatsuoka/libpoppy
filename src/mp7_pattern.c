@@ -1,11 +1,16 @@
 /*
  * mp7_pattern.c - rhythm combination and the sample-clocked sequencer.
  *
- * A rhythm is a 64-column note grid plus a 64-column step-enable mask and a
- * triplet flag (see the patterns specification). A column of the note grid is
- * a 16-bit instrument mask: bit n is set when instrument n plays in that
- * column. Selecting several rhythms combines them by OR-ing the note masks,
- * AND-ing the enable masks and OR-ing the triplet flags.
+ * A rhythm is a 64-column note grid plus a 64-column step-enable mask (see
+ * the patterns specification). A column of the note grid is a 16-bit
+ * instrument mask: bit n is set when instrument n plays in that column.
+ * Selecting several rhythms combines them by OR-ing the note masks and
+ * AND-ing the enable masks.
+ *
+ * The grid a pattern plays on follows its enable mask: the compound mask
+ * plays compound, every other mask plays straight. The subdivision of a
+ * selection is therefore the compound one as soon as one of the selected
+ * patterns is on the compound grid.
  *
  * The Tambourine, Guiro and Quijada hits are the same in every rhythm and
  * live in their own definition, mp7_shared_percussion_notes. It is OR-ed into
@@ -15,24 +20,26 @@
  * An extended build (-DLIBPOPPY_EXTRA) has a second set of patterns, the
  * user slots, and the selection is read against them when the sequencer
  * points at that source. A user pattern is complete - it carries its own
- * percussion lines - so the shared layer is not added to it.
+ * percussion lines - so the shared layer is not added to it. Its mask comes
+ * from its time signature, like every other pattern's.
  *
  * Disabled columns take no time: the sequencer only ever visits enabled
  * columns. A column that an immediate rhythm change disables is skipped, not
- * waited out. Each visited column lasts three sub-steps (straight) or four
- * (triplet), and each sub-step lasts round(2.5 * sample_rate / tempo) samples.
- * Triggers are evaluated before the sample at a sub-step boundary is rendered.
+ * waited out. A column lasts a fraction of a beat: the tempo is in quarter
+ * notes per minute, and a beat holds eight straight columns (a 32nd note
+ * each) or six compound ones (an 8th-note triplet each). Triggers are
+ * evaluated before the sample at a column boundary is rendered.
  */
 
 #include <string.h>
 
 #include "mp7_internal.h"
 
-/* A column lasts three timing intervals when straight and four when triplet,
- * counting the boundary on which the column starts. A counter that counted
- * only the gaps between columns would hold one less (2 or 3). */
-#define MP7_SUB_STEPS_STRAIGHT 3u
-#define MP7_SUB_STEPS_TRIPLET 4u
+/* A beat is a quarter note, and it holds eight straight columns or six
+ * compound ones. The tempo is in quarter notes per minute, so the beat is
+ * the only unit the sequencer needs. */
+#define MP7_STEPS_PER_BEAT_STRAIGHT 8u
+#define MP7_STEPS_PER_BEAT_COMPOUND 6u
 #define MP7_DEFAULT_TEMPO 120u
 #define MP7_MAX_TEMPO 240u
 
@@ -49,9 +56,33 @@ static unsigned int wrap_column(unsigned int column, unsigned int period)
     return column & (period - 1u);
 }
 
-static uint32_t sub_steps_per_column(const struct mp7_sequencer *seq)
+static uint32_t steps_per_beat(const struct mp7_sequencer *seq)
 {
-    return (seq->triplet != 0u) ? MP7_SUB_STEPS_TRIPLET : MP7_SUB_STEPS_STRAIGHT;
+    return (seq->subdivision == (uint8_t)MP7_SUBDIV_COMPOUND)
+               ? MP7_STEPS_PER_BEAT_COMPOUND
+               : MP7_STEPS_PER_BEAT_STRAIGHT;
+}
+
+/* The length of the next column, in samples.
+ *
+ * A beat is beat_samples long and holds steps_per_beat() columns, and it
+ * does not divide evenly into them. The leftover samples are handed out one
+ * at a time, so every beat lasts exactly as long as the tempo says and no
+ * column drifts away from the grid. */
+static uint32_t column_length(struct mp7_sequencer *seq)
+{
+    uint32_t steps = steps_per_beat(seq);
+    uint32_t length = seq->beat_samples / steps;
+
+    seq->step_remainder += seq->beat_samples % steps;
+    if (seq->step_remainder >= steps) {
+        seq->step_remainder -= steps;
+        length++;
+    }
+    if (length == 0u) {
+        length = 1u;
+    }
+    return length;
 }
 
 static uint8_t first_enabled_column(const struct mp7_sequencer *seq)
@@ -113,8 +144,9 @@ void mp7_pattern_reset(struct mp7_context_s *ctx)
      * A note the caller triggered itself is not affected. */
     mp7_guiro_gate(ctx, 0u, ctx->guiro_manual_gated);
 
-    seq->substep = 0u;
-    seq->sub_step_pos = 0u;
+    seq->column_fired = 0u;
+    seq->column_pos = 0u;
+    seq->step_remainder = 0u;
     seq->column = (seq->enable != 0u) ? first_enabled_column(seq) : 0u;
 }
 
@@ -133,17 +165,19 @@ void mp7_pattern_set_tempo(struct mp7_context_s *ctx, uint32_t bpm)
     }
     seq->tempo = bpm;
 
-    /* round(2.5 * sample_rate / tempo), i.e. floor((5 * sr + tempo) / (2 * tempo)). */
-    numerator = ((uint64_t)5u * (uint64_t)ctx->sample_rate) + (uint64_t)bpm;
+    /* round(60 * sample_rate / tempo), i.e. floor((120 * sr + tempo) / (2 * tempo)). */
+    numerator = ((uint64_t)120u * (uint64_t)ctx->sample_rate) + (uint64_t)bpm;
     denominator = (uint64_t)2u * (uint64_t)bpm;
     step = (uint32_t)(numerator / denominator);
     if (step == 0u) {
         step = 1u;
     }
-    seq->sub_step_samples = step;
+    seq->beat_samples = step;
 
-    if (seq->sub_step_pos > seq->sub_step_samples) {
-        seq->sub_step_pos = seq->sub_step_samples;
+    /* A faster tempo shortens the column that is running, so the countdown
+     * cannot outlast it. */
+    if (seq->column_pos > seq->beat_samples / steps_per_beat(seq)) {
+        seq->column_pos = seq->beat_samples / steps_per_beat(seq);
     }
 }
 
@@ -160,7 +194,7 @@ static void build_default_percussion(struct mp7_sequencer *seq)
             wrap_column(column, MP7_PATTERN_HALF_STEPS)];
     }
     seq->enable = ~(uint64_t)0;
-    seq->triplet = 0u;
+    seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
 }
 
 #ifdef LIBPOPPY_EXTRA
@@ -176,23 +210,24 @@ static void combine_user_patterns(struct mp7_context_s *ctx, uint32_t selected)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
     uint64_t enable = ~(uint64_t)0;
-    uint8_t triplet = 0u;
+    uint8_t subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
     unsigned int index;
     unsigned int column;
 
     if (selected == 0u) {
         if (seq->running != 0u) {
             seq->enable = ~(uint64_t)0;
-            seq->triplet = 0u;
+            seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
         } else {
             seq->enable = 0u;
-            seq->triplet = 0u;
+            seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
         }
         return;
     }
 
     for (index = 0u; index < (unsigned int)MP7_RHYTHM_COUNT; index++) {
         const struct mp7_user_slot *slot;
+        uint64_t mask;
 
         if ((selected & ((uint32_t)1u << index)) == 0u) {
             continue;
@@ -208,12 +243,15 @@ static void combine_user_patterns(struct mp7_context_s *ctx, uint32_t selected)
                 wrap_column(column, slot->notes_period)];
         }
 
-        enable &= slot->enable;
-        triplet |= slot->triplet;
+        /* The mask comes from the time signature of the slot, so it is one
+         * of the six the library knows. */
+        mask = mp7_timesig_enable_mask((mp7_timesig)slot->timesig);
+        enable &= mask;
+        subdivision |= mp7_mask_is_compound(mask);
     }
 
     seq->enable = enable;
-    seq->triplet = triplet;
+    seq->subdivision = subdivision;
 }
 #endif /* LIBPOPPY_EXTRA */
 
@@ -222,7 +260,7 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
     struct mp7_sequencer *seq = &ctx->sequencer;
     uint32_t selected = selected_mask & ((1u << MP7_RHYTHM_COUNT) - 1u);
     uint64_t enable = ~(uint64_t)0;
-    uint8_t triplet = 0u;
+    uint8_t subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
     unsigned int rhythm;
     unsigned int column;
 
@@ -243,7 +281,7 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
             build_default_percussion(seq);
         } else {
             seq->enable = 0u;
-            seq->triplet = 0u;
+            seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
         }
         return;
     }
@@ -262,7 +300,10 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
         }
         enable &= pattern->enable;
 
-        triplet |= pattern->triplet;
+        /* The grid a pattern plays on follows its own mask, not the
+         * combined one: the combined mask of a compound and a straight
+         * pattern is neither of the two. */
+        subdivision |= mp7_mask_is_compound(pattern->enable);
     }
 
     /* The shared Tambourine/Guiro/Quijada layer plays with every rhythm. */
@@ -272,7 +313,7 @@ void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
     }
 
     seq->enable = enable;
-    seq->triplet = triplet;
+    seq->subdivision = subdivision;
 }
 
 void mp7_pattern_init(struct mp7_context_s *ctx)
@@ -284,9 +325,8 @@ void mp7_pattern_init(struct mp7_context_s *ctx)
 }
 
 /* Apply a queued selection when the current cycle wraps. The new pattern
- * starts at its first enabled column; the sub-step interval was already
- * established by the caller, so the first hit lands one column boundary
- * later, exactly like an ordinary column change. */
+ * starts at its first enabled column, and the caller fires it, so the first
+ * hit lands one column later, exactly like an ordinary column change. */
 static void apply_pending(struct mp7_context_s *ctx)
 {
     struct mp7_sequencer *seq = &ctx->sequencer;
@@ -316,7 +356,6 @@ static void apply_pending(struct mp7_context_s *ctx)
     }
 
     seq->column = first_enabled_column(seq);
-    seq->substep = 0u;
 }
 
 /* Move the playhead to the next enabled column and apply a queued selection
@@ -430,24 +469,22 @@ void mp7_pattern_tick(struct mp7_context_s *ctx)
         return;
     }
 
-    if (seq->sub_step_pos != 0u) {
-        seq->sub_step_pos--;
+    if (seq->column_pos != 0u) {
+        seq->column_pos--;
         return;
     }
 
-    if (seq->substep == 0u) {
-        fire_column(ctx);
-        seq->substep = 1u;
-    } else {
-        seq->substep++;
-        if (seq->substep >= sub_steps_per_column(seq)) {
-            seq->substep = 0u;
-            if (advance_column(ctx) == 0) {
-                return;
-            }
+    /* The column that was running has used up its time. The playhead moves
+     * to the next enabled column, which fires right away: a column that a
+     * rhythm change disabled takes no time. */
+    if (seq->column_fired != 0u) {
+        seq->column_fired = 0u;
+        if (advance_column(ctx) == 0) {
+            return;
         }
     }
 
-    /* The boundary sample itself counts as the first of the interval. */
-    seq->sub_step_pos = seq->sub_step_samples - 1u;
+    fire_column(ctx);
+    seq->column_fired = 1u;
+    seq->column_pos = column_length(seq) - 1u;
 }

@@ -203,9 +203,16 @@ const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
  * shared layer is OR-ed into the combined grid when the rhythms are put
  * together.
  *
- * The three distinct step-enable masks are defined once and shared by
- * every rhythm that uses them. Bit c is column c; the note grids are named
- * after the rhythm they belong to.
+ * The step-enable masks are the ones of the time signatures, and they are
+ * defined once in mp7_internal.h and shared by every rhythm that uses them.
+ * Bit c is column c; the note grids are named after the rhythm they belong
+ * to.
+ *
+ * The compound (shuffle) grid has one hole pattern for all three shuffle
+ * rhythms - March 2/4, March 6/8 and Slow Rock - so the mask cannot tell
+ * 2/4 from 6/8 and the two names only record the rhythm's panel name. The
+ * value is MP7_PATTERN_COMPOUND_MASK, because the grid also decides the
+ * subdivision: a pattern on this mask plays compound.
  *
  * A grid stores only its shortest repeating period (16, 32 or 64
  * columns) and sets notes_period accordingly; the sequencer wraps the
@@ -213,10 +220,6 @@ const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
  * the halves, so they keep all 64 columns. The shared percussion layer
  * also repeats every 32 columns.
  */
-
-#define MP7_TIMESIG_4_4 UINT64_C(0xFFFFFFFFFFFFFFFF)
-#define MP7_TIMESIG_3_4 UINT64_C(0xFF0F0FFFFF0F0FFF)
-#define MP7_TIMESIG_2_4 UINT64_C(0x3F3F3F3F3F3F3F3F)
 
 /* The Tambourine, Guiro and Quijada layer. It is the same in every
  * factory rhythm and it is what plays when no rhythm button is pressed.
@@ -348,7 +351,7 @@ static const uint16_t mp7_pattern_rock3_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0106, 0x0000, 0x0000, 0x0000, 0x0101, 0x0000, 0x0000, 0x0000,
 };
 
-/* March 2/4 - 2/4, triplet, 16-column stored period
+/* March 2/4 - 2/4, compound, 16-column stored period
  * Enable     OOOOOO..OOOOOO..
  * Bass       O-----..------..
  * Snare 2    ------..O-----..
@@ -444,7 +447,7 @@ static const uint16_t mp7_pattern_habanera_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0101, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
 };
 
-/* Slow Rock - 2/4, triplet, 16-column stored period
+/* Slow Rock - 2/4, compound, 16-column stored period
  * Enable     OOOOOO..OOOOOO..
  * Bass       O-----..----O-..
  * Hihat      O-O-O-O.O-O-O-O.
@@ -480,7 +483,7 @@ static const uint16_t mp7_pattern_rock4_notes[MP7_PATTERN_HALF_STEPS] = {
     0x0106, 0x0000, 0x0000, 0x0000, 0x0105, 0x0000, 0x0000, 0x0000,
 };
 
-/* March 6/8 - 2/4, triplet, 16-column stored period
+/* March 6/8 - 2/4, compound, 16-column stored period
  * Enable     OOOOOO..OOOOOO..
  * Bass       O-----..O-----..
  * Cymbal 2   O---O-..O---O-..
@@ -504,25 +507,25 @@ static const uint16_t mp7_pattern_latinswing_notes[MP7_PATTERN_HALF_STEPS] = {
 };
 
 const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT] = {
-    { mp7_pattern_waltz_notes, MP7_TIMESIG_3_4, 32, false }, /* Waltz */
-    { mp7_pattern_samba_notes, MP7_TIMESIG_4_4, 64, false }, /* Samba */
-    { mp7_pattern_mambo_notes, MP7_TIMESIG_4_4, 32, false }, /* Mambo */
-    { mp7_pattern_rumba_notes, MP7_TIMESIG_4_4, 64, false }, /* Rumba */
-    { mp7_pattern_tango_notes, MP7_TIMESIG_4_4, 32, false }, /* Tango */
-    { mp7_pattern_bossanova_notes, MP7_TIMESIG_4_4, 64, false }, /* Bossanova */
-    { mp7_pattern_rock1_notes, MP7_TIMESIG_4_4, 32, false }, /* Rock 1 */
-    { mp7_pattern_rock3_notes, MP7_TIMESIG_4_4, 32, false }, /* Rock 3 */
-    { mp7_pattern_march24_notes, MP7_TIMESIG_2_4, MP7_PATTERN_QUARTER_STEPS, true }, /* March 2/4 */
-    { mp7_pattern_swing_notes, MP7_TIMESIG_4_4, 32, false }, /* Swing */
-    { mp7_pattern_jazzwaltz_notes, MP7_TIMESIG_3_4, 32, false }, /* Jazz Waltz */
-    { mp7_pattern_meringue_notes, MP7_TIMESIG_4_4, 64, false }, /* Meringue */
-    { mp7_pattern_chacha_notes, MP7_TIMESIG_4_4, 64, false }, /* Cha-Cha */
-    { mp7_pattern_beguine_notes, MP7_TIMESIG_4_4, 32, false }, /* Beguine */
-    { mp7_pattern_habanera_notes, MP7_TIMESIG_4_4, 32, false }, /* Habanera */
-    { mp7_pattern_slowrock_notes, MP7_TIMESIG_2_4, MP7_PATTERN_QUARTER_STEPS, true }, /* Slow Rock */
-    { mp7_pattern_rock2_notes, MP7_TIMESIG_4_4, 32, false }, /* Rock 2 */
-    { mp7_pattern_rock4_notes, MP7_TIMESIG_4_4, 32, false }, /* Rock 4 */
-    { mp7_pattern_march68_notes, MP7_TIMESIG_2_4, MP7_PATTERN_QUARTER_STEPS, true }, /* March 6/8 */
-    { mp7_pattern_latinswing_notes, MP7_TIMESIG_4_4, 32, false }, /* Latin Swing */
+    { mp7_pattern_waltz_notes, MP7_ENABLE_3_4, 32 }, /* Waltz */
+    { mp7_pattern_samba_notes, MP7_ENABLE_4_4, 64 }, /* Samba */
+    { mp7_pattern_mambo_notes, MP7_ENABLE_4_4, 32 }, /* Mambo */
+    { mp7_pattern_rumba_notes, MP7_ENABLE_4_4, 64 }, /* Rumba */
+    { mp7_pattern_tango_notes, MP7_ENABLE_4_4, 32 }, /* Tango */
+    { mp7_pattern_bossanova_notes, MP7_ENABLE_4_4, 64 }, /* Bossanova */
+    { mp7_pattern_rock1_notes, MP7_ENABLE_4_4, 32 }, /* Rock 1 */
+    { mp7_pattern_rock3_notes, MP7_ENABLE_4_4, 32 }, /* Rock 3 */
+    { mp7_pattern_march24_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS }, /* March 2/4 */
+    { mp7_pattern_swing_notes, MP7_ENABLE_4_4, 32 }, /* Swing */
+    { mp7_pattern_jazzwaltz_notes, MP7_ENABLE_3_4, 32 }, /* Jazz Waltz */
+    { mp7_pattern_meringue_notes, MP7_ENABLE_4_4, 64 }, /* Meringue */
+    { mp7_pattern_chacha_notes, MP7_ENABLE_4_4, 64 }, /* Cha-Cha */
+    { mp7_pattern_beguine_notes, MP7_ENABLE_4_4, 32 }, /* Beguine */
+    { mp7_pattern_habanera_notes, MP7_ENABLE_4_4, 32 }, /* Habanera */
+    { mp7_pattern_slowrock_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS }, /* Slow Rock */
+    { mp7_pattern_rock2_notes, MP7_ENABLE_4_4, 32 }, /* Rock 2 */
+    { mp7_pattern_rock4_notes, MP7_ENABLE_4_4, 32 }, /* Rock 4 */
+    { mp7_pattern_march68_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS }, /* March 6/8 */
+    { mp7_pattern_latinswing_notes, MP7_ENABLE_4_4, 32 }, /* Latin Swing */
 };
 

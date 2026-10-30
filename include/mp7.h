@@ -27,7 +27,7 @@ extern "C" {
 /* Library version. major/minor/patch are packed as 0x00MMmmpp.
  * The plain integer constants keep MP7_VERSION_NUMBER usable in #if. */
 #define MP7_VERSION_MAJOR 0
-#define MP7_VERSION_MINOR 1
+#define MP7_VERSION_MINOR 2
 #define MP7_VERSION_PATCH 0
 #define MP7_VERSION_NUMBER \
     ((MP7_VERSION_MAJOR << 16) | (MP7_VERSION_MINOR << 8) | MP7_VERSION_PATCH)
@@ -87,6 +87,58 @@ typedef enum {
     MP7_BANK_B = 1
 } mp7_bank;
 
+/* The time signature of a pattern.
+ *
+ * The signature is the metric the grid is built on. It names the hole
+ * pattern of the grid - which columns are skipped - and with it the grid
+ * the pattern plays on. A pattern never carries a step-enable mask of its
+ * own: the library derives the mask from the signature, so a pattern cannot
+ * ask for a hole pattern the hardware does not have.
+ *
+ * A bar is as long as the signature says: the 3/4 bar is three beats, the
+ * 4/4 bar four, the 5/4 bar five and the 7/4 bar seven, and the grid skips
+ * the columns that are not part of a bar. The 2/4 and the 6/8 share one
+ * hole pattern, the compound one, so their masks are the same and the name
+ * only records the label the rhythm carries on the panel.
+ *
+ * The zero value is 4/4, so a pattern that is only zeroed is a straight
+ * 64-column loop. */
+typedef enum {
+    MP7_TIMESIG_4_4 = 0,
+    MP7_TIMESIG_2_4 = 1,
+    MP7_TIMESIG_3_4 = 2,
+    MP7_TIMESIG_5_4 = 3,
+    MP7_TIMESIG_6_8 = 4,
+    MP7_TIMESIG_7_4 = 5,
+    MP7_TIMESIG_COUNT = 6
+} mp7_timesig;
+
+/* The step-enable mask of a time signature: a 64-bit word, one bit per
+ * column, and a disabled column takes no time.
+ *
+ * This is the mask the library gives a pattern of that signature, and it is
+ * what the pattern plays on. The 4/4 mask enables every column, the 5/4
+ * mask the first forty and the 7/4 mask the first fifty-six, so a bar of
+ * either of them is one bar in the cycle. The mask of the 2/4 and of the
+ * 6/8 is the compound one: six columns enabled and two disabled, every
+ * eight columns, so the three built-in shuffle rhythms - March 2/4, March
+ * 6/8 and Slow Rock - all share it and the mask cannot tell them apart.
+ *
+ * The masks are not constants of the public API: a pattern carries a time
+ * signature, never a mask, and the mask of a signature is read with this
+ * function. An unknown signature has no mask and yields 0.
+ *
+ * The mask also decides the grid the pattern plays on. The Mini Pops-7 has no
+ * swing switch: the shuffle is a property of the step grid. A straight beat
+ * holds eight columns (a 32nd note each) and a compound beat six (an 8th-note
+ * triplet each), and only the compound grid can express a 2:1 swung eighth,
+ * because only there is an eighth three columns long. So the compound mask -
+ * the mask of the 2/4 and of the 6/8 - plays on the compound grid and every
+ * other mask plays straight, and a pattern cannot ask for a shuffle on a grid
+ * that cannot carry one.
+ */
+uint64_t mp7_timesig_enable_mask(mp7_timesig timesig);
+
 /* Schedule flags for mp7_select_rhythm(), OR-ed into the button mask.
  * MP7_APPLY_NOW is zero, so the immediate case needs no flag. */
 #define MP7_APPLY_NOW 0x0000u
@@ -118,14 +170,17 @@ uint32_t mp7_version_number(void);
  * `notes[c & (notes_period - 1)] | percussion[c & (percussion_period - 1)]`.
  *
  * `enable` is a 64-bit mask, one bit per column; disabled columns take no
- * time. `triplet` is true for the shuffle rhythms. */
+ * time. It is one of the masks of the time signatures, and
+ * mp7_timesig_enable_mask() returns the mask of each of them. The mask also
+ * decides the grid the rhythm plays on: the compound mask plays compound,
+ * every other mask plays straight.
+ */
 struct mp7_pattern_view {
     const uint16_t *notes;
     const uint16_t *percussion;
     uint64_t enable;
     uint8_t notes_period;
     uint8_t percussion_period;
-    bool triplet;
 };
 
 /* Allocate and initialize a context. A sample_rate of 0 selects
@@ -283,7 +338,7 @@ void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16);
 
 /* Copy a view of one factory rhythm into `out`. Out-of-range input yields
- * null pointers and a false triplet flag. */
+ * null pointers and a zeroed mask. */
 void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out);
 
 /* Map a factory rhythm to the bank and button bit that select it on the
@@ -335,22 +390,24 @@ typedef enum {
  * Quijada included: a user pattern is a complete pattern and not a rhythm
  * plus the shared percussion layer, so the shared layer is never added to it.
  *
- * `enable` is a 64-bit mask, one bit per column; disabled columns take no
- * time. An all-zero mask disables every column and stops the sequencer, so
- * use ~0 for a full 64-column loop.
+ * `timesig` is the time signature of the pattern. It is the only way to
+ * shape the grid: the library derives the step-enable mask from it, so the
+ * pattern cannot carry a mask of its own and cannot ask for a hole pattern
+ * the hardware does not have. A 2/4 or 6/8 pattern plays on the compound
+ * (shuffle) grid, every other signature plays straight. An unknown signature
+ * is rejected.
  *
  * `notes_period` is the length of the repeating part of the grid: 16, 32
  * or 64 columns. Column c of the pattern is `notes[c & (notes_period - 1)]`
  * and the columns from notes_period on are ignored. Any other value is
  * stored as a full 64-column grid.
  *
- * `triplet` is true for a shuffle pattern: a triplet column spans four
- * sub-steps instead of three. */
+ * Every member of the struct is an input: the grid, the metric and the
+ * period are what the host writes, and the library derives the rest. */
 struct mp7_user_pattern {
     uint16_t notes[MP7_USER_PATTERN_COLUMNS];
-    uint64_t enable;
+    mp7_timesig timesig;
     uint8_t notes_period;
-    bool triplet;
 };
 
 /* Copy a pattern into one of the user slots.
@@ -367,8 +424,8 @@ struct mp7_user_pattern {
  * A pattern that is playing changes with the pattern: the grid is rebuilt
  * from the current playhead, like an immediate rhythm change.
  *
- * Returns false when `ctx` is null or `index` is out of range; the slots
- * are left alone in that case. */
+ * Returns false when `ctx` is null, `index` is out of range or the pattern
+ * carries an unknown time signature; the slots are left alone in that case. */
 bool mp7_set_user_pattern(mp7_context ctx,
                            unsigned int index,
                            const struct mp7_user_pattern *pattern);
@@ -378,7 +435,7 @@ bool mp7_set_user_pattern(mp7_context ctx,
  * Returns false when `ctx` is null, `index` is out of range, `out` is null
  * or the slot is empty; an empty or invalid slot yields a zeroed pattern.
  * The copy is the pattern as it was stored, so a set/get round trip returns
- * the same grid, enable mask, period and triplet flag. */
+ * the same grid, time signature and period. */
 bool mp7_get_user_pattern(const void *ctx,
                            unsigned int index,
                            struct mp7_user_pattern *out);

@@ -375,7 +375,6 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
         out->enable = 0;
         out->notes_period = 0;
         out->percussion_period = 0;
-        out->triplet = false;
         return;
     }
 
@@ -385,7 +384,26 @@ void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
     out->enable = pattern->enable;
     out->notes_period = pattern->notes_period;
     out->percussion_period = MP7_PATTERN_HALF_STEPS;
-    out->triplet = (pattern->triplet != 0u);
+}
+
+uint64_t mp7_timesig_enable_mask(mp7_timesig timesig)
+{
+    switch (timesig) {
+    case MP7_TIMESIG_2_4:
+        return MP7_ENABLE_2_4;
+    case MP7_TIMESIG_3_4:
+        return MP7_ENABLE_3_4;
+    case MP7_TIMESIG_5_4:
+        return MP7_ENABLE_5_4;
+    case MP7_TIMESIG_6_8:
+        return MP7_ENABLE_6_8;
+    case MP7_TIMESIG_7_4:
+        return MP7_ENABLE_7_4;
+    case MP7_TIMESIG_4_4:
+        return MP7_ENABLE_4_4;
+    default:
+        return 0u;
+    }
 }
 
 mp7_bank mp7_rhythm_bank(mp7_rhythm rhythm)
@@ -430,6 +448,14 @@ bool mp7_set_user_pattern(mp7_context ctx,
         return true;
     }
 
+    /* The time signature names the hole pattern of the grid, and the
+     * library derives the step-enable mask from it. A pattern therefore
+     * cannot carry a mask of its own, and an unknown signature is refused
+     * instead of being turned into one. */
+    if ((unsigned int)pattern->timesig >= (unsigned int)MP7_TIMESIG_COUNT) {
+        return false;
+    }
+
     /* The stored period is the shortest repeating length of the grid, and it
      * is always a power of two, so the column wraps with a mask. */
     period = pattern->notes_period;
@@ -444,9 +470,8 @@ bool mp7_set_user_pattern(mp7_context ctx,
         slot->notes[column] = pattern->notes[column];
     }
 
-    slot->enable = pattern->enable;
+    slot->timesig = (uint8_t)pattern->timesig;
     slot->notes_period = period;
-    slot->triplet = (pattern->triplet != false) ? 1u : 0u;
     slot->used = 1u;
 
     /* A pattern that is playing changes with the pattern: the grid is
@@ -483,9 +508,8 @@ bool mp7_get_user_pattern(const void *ctx,
     }
 
     memcpy(out->notes, slot->notes, sizeof(out->notes));
-    out->enable = slot->enable;
+    out->timesig = (mp7_timesig)slot->timesig;
     out->notes_period = slot->notes_period;
-    out->triplet = (slot->triplet != 0u);
 
     return true;
 }
