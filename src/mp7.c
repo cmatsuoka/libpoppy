@@ -75,9 +75,12 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
     c->hihat_highpass_hz = MP7_HIHAT_HIGHPASS_HZ;
 #endif
 
+    /* The mixer is initialized first: the voices take their pan from the
+     * per-instrument pan positions. */
+    poppy_mixer_init(&c->mixer);
+
     mp7_voice_init_all(c);
     mp7_pattern_init(c);
-    poppy_mixer_init(&c->mixer);
 
     /* The panel's three Additional Volume faders start at 0.5; every other
      * instrument starts at unity. */
@@ -358,7 +361,30 @@ void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16)
         return;
     }
 
+    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return;
+    }
+
     poppy_mixer_set_instr_gain(&c->mixer, (unsigned int)instr, gain_q16);
+}
+
+void mp7_set_instr_pan(mp7_context ctx, mp7_instr instr, int32_t pan_q16)
+{
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return;
+    }
+
+    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return;
+    }
+
+    poppy_mixer_set_instr_pan(&c->mixer, (unsigned int)instr, pan_q16);
+
+    /* The voice pans immediately, so a note that is already sounding moves
+     * to the new position. */
+    c->voices[instr].pan_q16 = c->mixer.instr_pan_q16[instr];
 }
 
 void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)

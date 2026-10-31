@@ -174,7 +174,7 @@ struct mp7_user_slot {
  *
  * The noise engine tunes its band-pass to the voice's frequency and its
  * high-pass to the voice's highpass field, so these are the Snare 1
- * band-pass centre and the Hihat high-pass cut-off. The voice table
+ * band-pass center and the Hihat high-pass cut-off. The voice table
  * below uses the same names, so the table and the defaults cannot
  * drift apart. */
 #define MP7_SNARE1_BANDPASS_HZ 5500u
@@ -301,13 +301,15 @@ enum mp7_engine {
 /* Global mix controls. The master volume is the panel value (0..4); the mixer
  * applies the 0.5 factor itself. The instrument gains apply to every voice;
  * Tambourine, Guiro and Quijada default to 0.5 (their panel Additional Volume
- * faders) and the remaining instruments default to 1.0. */
+ * faders) and the remaining instruments default to 1.0. The instrument pans
+ * default to center and are the source of the per-voice pan positions. */
 struct poppy_mixer {
     int32_t panel_volume_q16; /* the panel Volume, 0..4; the mixer applies 0.5x */
     int32_t balance_q16;
     int32_t balance_a_gain_q16; /* cached, recomputed on a Balance change */
     int32_t balance_b_gain_q16;
     int32_t instr_gain_q16[MP7_INSTR_COUNT];
+    int32_t instr_pan_q16[MP7_INSTR_COUNT]; /* 0 = hard left, 65536 = hard right */
 };
 
 /* Balance touches exactly two groups: Bass Drum against Hihat/Cymbal 1/Cymbal 2.
@@ -340,7 +342,7 @@ struct mp7_voice {
     int32_t tick_q30;       /* noise tone depth, from the fixed Tick value */
     int32_t level2_q16;     /* dual-tone second-oscillator level, Q16 (65536 = 1.0) */
     int32_t level_q16;      /* fixed per-voice Level, Q16 */
-    int32_t pan_q16;        /* fixed per-voice Pan, Q16 (32768 = centre) */
+    int32_t pan_q16;        /* per-voice Pan, Q16 (32768 = center) */
     uint8_t balance_group;  /* enum poppy_mix_group */
 #ifdef LIBPOPPY_EXTRA
     int32_t accent_gain_q16; /* pattern accent gain, Q16 (default 1.0) */
@@ -437,7 +439,7 @@ struct mp7_context_s {
     /* User-modifiable synthesis parameters, reset by mp7_reset(). */
     int32_t accent_gain_q16;       /* accent column gain multiplier, Q16 */
     int32_t snare1_decay_q16;      /* Snare 1 decay time multiplier, Q16 */
-    uint32_t snare1_bandpass_hz;   /* Snare 1 band-pass centre frequency */
+    uint32_t snare1_bandpass_hz;   /* Snare 1 band-pass center frequency */
     uint32_t hihat_highpass_hz;    /* Hihat high-pass cut-off frequency */
 #endif
 };
@@ -520,6 +522,9 @@ void poppy_mixer_set_balance(struct poppy_mixer *mixer, int32_t balance_q16);
 void poppy_mixer_set_instr_gain(struct poppy_mixer *mixer,
                                 unsigned int instr,
                                 int32_t gain_q16);
+void poppy_mixer_set_instr_pan(struct poppy_mixer *mixer,
+                               unsigned int instr,
+                               int32_t pan_q16);
 int32_t poppy_mixer_balance_gain_q16(const struct poppy_mixer *mixer,
                                      unsigned int group);
 int64_t poppy_mixer_pan_left(int64_t sample_q31, int32_t pan_q16);

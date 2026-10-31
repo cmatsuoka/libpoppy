@@ -268,10 +268,13 @@ void mp7_voice_init_all(struct mp7_context_s *ctx)
     unsigned int i;
 
     /* voice_setup() resets the whole voice, so it also resets the fixed
-     * Level and Pan. They are constants today; if they ever become
-     * per-voice settings, a sample-rate change must not clear them. */
+     * Level and Pan. The Level is a constant today; if it ever becomes a
+     * per-voice setting, a sample-rate change must not clear it. The Pan
+     * comes from the per-instrument pan in the mixer, so it is re-applied
+     * here. */
     for (i = 0; i < (unsigned int)MP7_INSTR_COUNT; i++) {
         voice_setup(&ctx->voices[i], (mp7_instr)i, &voice_config[i], ctx->sample_rate);
+        ctx->voices[i].pan_q16 = ctx->mixer.instr_pan_q16[i];
     }
 
 #ifdef LIBPOPPY_EXTRA

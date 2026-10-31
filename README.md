@@ -41,9 +41,7 @@ The player is written to `build/examples/play_rhythm`:
 
 The library is built with the `LIBPOPPY_EXTRA` macro defined, so it carries
 the user pattern slots. A minimal, preset-only library — the 20 factory
-rhythms and nothing else — is one edit away: empty the `EXTRA_DEF` line in
-the Makefile. `make check` builds and tests both configurations, whichever
-one is the shipped one.
+rhythms and nothing else.
 
 Requirements: a C99 compiler and `make`. The library is built with
 `-std=c99 -Wall -Wextra -Werror`; the build also enables
@@ -75,6 +73,7 @@ the player.
 mp7_set_volume(ctx, 65536);                 /* panel 1.0 -> 0.5x master gain */
 mp7_set_balance(ctx, 32768);                /* center */
 mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 65536);
+mp7_set_instr_pan(ctx, MP7_INSTR_QUIJADA, 32768);   /* center, 0 = left, 65536 = right */
 mp7_set_tempo(ctx, 120);
 
 /* Bank A, Waltz + Samba buttons latched, applied now. */
@@ -147,23 +146,13 @@ mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
 ```
 
 The time signature is the only way to shape the grid: the library derives the
-step-enable mask from it, so a pattern cannot carry a mask of its own and
-cannot ask for a hole pattern the hardware does not have. The signatures are
-2/4, 3/4, 4/4, 5/4, 6/8 and 7/4, and `mp7_timesig_enable_mask()` returns the
-mask of each of them.
-
-The grid a pattern plays on follows that mask: a 2/4 or 6/8 pattern plays on
-the compound (shuffle) grid, and every other signature plays straight. There
-is no separate rate setting, so a pattern cannot ask for a shuffle on a grid
-that cannot carry one.
+step-enable mask from it, so a pattern cannot carry a custom mask (sorry, no
+3/5 patterns for now). Valid signatures are 2/4, 3/4, 4/4, 5/4, 6/8 and 7/4.
+`mp7_timesig_enable_mask()` returns the mask of each of them.
 
 `mp7_get_user_pattern()` reads a slot back, `mp7_set_user_pattern(ctx, index,
 NULL)` empties one, and `mp7_reset()` empties all of them and returns to the
 preset source. A pattern that is playing changes with the pattern.
-
-With no button pressed the user source keeps the transport running and stays
-silent: the shared percussion layer belongs to the preset source, and a user
-pattern carries its own percussion lines.
 
 ## Synthesis tweaks
 
@@ -184,11 +173,9 @@ The accent gain applies to user-pattern columns that set the
 takes effect on the notes triggered after it. The Snare 1 decay scales the
 factory decay time; a note that is already sounding keeps playing and decays
 at the new rate. The two cut-offs move the Snare 1 band-pass centre and the
-Hihat high-pass.
-
-None of them costs anything per sample: the accent is folded into the gain
-the mixer already applies to a voice, and the other three only recompute
-coefficients between blocks.
+Hihat high-pass. None of them costs anything per sample: the accent is folded
+into the gain the mixer already applies to a voice, and the other three only
+recompute coefficients between blocks.
 
 The cut-offs are also limited to two fifths of the sample rate, because a
 biquad is only stable below Nyquist. At 44100 Hz that limit is above

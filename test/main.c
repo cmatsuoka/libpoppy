@@ -14,7 +14,8 @@
  *   --noise             verify the 6 noise voices are uncorrelated
  *   --guiro             verify Guiro gate hold and note-off release
  *   --quijada           verify Quijada frequencies, thresholds and comparator
- *   --mixer             verify pan, Volume, Balance and instrument gains
+ *   --mixer             verify pan, Volume, Balance, instrument gains and
+ *                       instrument pans
  *   --api               verify the public API: triggers, rhythm selection,
  *                       tempo and mix controls
  *   --panel             verify the panel state snapshot and lamp flash counter
@@ -2056,7 +2057,7 @@ static int command_mixer(void)
         return 1;
     }
 
-    /* Defaults: Volume 1.0 (master gain 0.5), Balance centre, instrument
+    /* Defaults: Volume 1.0 (master gain 0.5), Balance center, instrument
      * gains at 0.5 for the three Additional Volume faders and 1.0 elsewhere. */
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
     if ((ctx->mixer.panel_volume_q16 != POPPY_Q16_ONE) ||
@@ -2077,6 +2078,12 @@ static int command_mixer(void)
         }
     }
     for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        if (ctx->mixer.instr_pan_q16[i] != POPPY_Q16_ONE / 2) {
+            fail("an instrument pan does not default to center");
+            break;
+        }
+    }
+    for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
         if ((ctx->voices[i].level_q16 != POPPY_Q16_ONE) ||
             (ctx->voices[i].pan_q16 != POPPY_Q16_ONE / 2)) {
             fail("a voice does not default to Level 1.0 / Pan 0.5");
@@ -2087,14 +2094,14 @@ static int command_mixer(void)
         ok("the mixer defaults to Volume 1.0, Balance 0.5 and panel gains");
     }
 
-    /* A centred voice appears equally in both channels, and a hard pan sends
+    /* A centered voice appears equally in both channels, and a hard pan sends
      * it entirely to one side. */
     render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
     if ((channel_peak(stereo, frames, 0u) == 0) ||
         (channel_peak(stereo, frames, 0u) != channel_peak(stereo, frames, 1u))) {
-        fail("a centred voice is not equal in both channels");
+        fail("a centered voice is not equal in both channels");
     } else {
-        ok("a centred voice is equal in both channels");
+        ok("a centered voice is equal in both channels");
     }
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
@@ -2108,17 +2115,17 @@ static int command_mixer(void)
         ok("pan 0 sends a voice hard left");
     }
 
-    /* The centre pan splits the voice 0.5 / 0.5, so a hard-left voice is
-     * exactly twice as loud in the left channel as a centred one. Together
+    /* The center pan splits the voice 0.5 / 0.5, so a hard-left voice is
+     * exactly twice as loud in the left channel as a centered one. Together
      * with the default master gain of 0.5 that puts a default hit at 0.25
      * per channel (-12.04 dBFS) at the anchor of +/-1.0 for a Level 1.0
      * voice. */
     {
-        int centred;
+        int centered;
         int hard_left;
 
         render_trigger(ctx, MP7_INSTR_BASS, stereo, frames);
-        centred = channel_peak(stereo, frames, 0u);
+        centered = channel_peak(stereo, frames, 0u);
 
         mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
         mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
@@ -2126,14 +2133,14 @@ static int command_mixer(void)
         mp7_process(ctx, stereo, frames);
         hard_left = channel_peak(stereo, frames, 0u);
 
-        if ((centred == 0) ||
-            (hard_left < (2 * centred) - 1) ||
-            (hard_left > (2 * centred) + 1)) {
-            printf("FAIL: the centre pan does not split the voice in half (peaks %d -> %d)\n",
-                   centred, hard_left);
+        if ((centered == 0) ||
+            (hard_left < (2 * centered) - 1) ||
+            (hard_left > (2 * centered) + 1)) {
+            printf("FAIL: the center pan does not split the voice in half (peaks %d -> %d)\n",
+                   centered, hard_left);
             failures++;
         } else {
-            ok("the centre pan splits the voice 0.5 / 0.5");
+            ok("the center pan splits the voice 0.5 / 0.5");
         }
     }
 
@@ -2146,6 +2153,40 @@ static int command_mixer(void)
         fail("pan 1.0 is not hard right");
     } else {
         ok("pan 1.0 sends a voice hard right");
+    }
+
+    /* A per-instrument pan moves its own voice only. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_instr_pan(ctx, MP7_INSTR_BASS, 0);
+    mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+    mp7_process(ctx, stereo, frames);
+    if ((channel_peak(stereo, frames, 0u) == 0) ||
+        (channel_peak(stereo, frames, 1u) != 0)) {
+        fail("a per-instrument pan of 0 does not send its voice hard left");
+    } else {
+        ok("a per-instrument pan of 0 sends its voice hard left");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_instr_pan(ctx, MP7_INSTR_BASS, POPPY_Q16_ONE);
+    mp7_voice_trigger(&ctx->voices[MP7_INSTR_BASS]);
+    mp7_process(ctx, stereo, frames);
+    if ((channel_peak(stereo, frames, 1u) == 0) ||
+        (channel_peak(stereo, frames, 0u) != 0)) {
+        fail("a per-instrument pan of 1.0 does not send its voice hard right");
+    } else {
+        ok("a per-instrument pan of 1.0 sends its voice hard right");
+    }
+
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_instr_pan(ctx, MP7_INSTR_BASS, 0);
+    mp7_voice_trigger(&ctx->voices[MP7_INSTR_SNARE_1]);
+    mp7_process(ctx, stereo, frames);
+    if ((channel_peak(stereo, frames, 0u) == 0) ||
+        (channel_peak(stereo, frames, 0u) != channel_peak(stereo, frames, 1u))) {
+        fail("a per-instrument pan moved another voice");
+    } else {
+        ok("a per-instrument pan moves its own voice only");
     }
 
     /* The master Volume is applied as 0.5 * value: 1.0 is half scale, 2.0 is
@@ -3009,6 +3050,39 @@ static int command_api(void)
         ok("mp7_set_instr_gain() maps and clamps all instruments");
     }
 
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_instr_pan(ctx, MP7_INSTR_QUIJADA, POPPY_Q16_ONE + 1);
+    if (ctx->mixer.instr_pan_q16[MP7_INSTR_QUIJADA] != POPPY_Q16_ONE) {
+        fail("mp7_set_instr_pan() does not clamp Quijada to 1.0");
+    }
+    mp7_set_instr_pan(ctx, MP7_INSTR_GUIRO, -1);
+    if (ctx->mixer.instr_pan_q16[MP7_INSTR_GUIRO] != 0) {
+        fail("mp7_set_instr_pan() does not clamp Guiro to 0");
+    }
+    for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        mp7_set_instr_pan(ctx, (mp7_instr)i, 0);
+        if ((ctx->mixer.instr_pan_q16[i] != 0) ||
+            (ctx->voices[i].pan_q16 != 0)) {
+            fail("mp7_set_instr_pan() did not map an instrument");
+            break;
+        }
+    }
+    if (failures == 0) {
+        ok("mp7_set_instr_pan() maps and clamps all instruments");
+    }
+
+    /* A per-instrument pan survives a sample-rate change: the voices are
+     * rebuilt there, and the pan lives in the mixer. */
+    mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+    mp7_set_instr_pan(ctx, MP7_INSTR_CYMBAL_1, POPPY_Q16_ONE);
+    mp7_set_sample_rate(ctx, 44100u);
+    if ((ctx->mixer.instr_pan_q16[MP7_INSTR_CYMBAL_1] != POPPY_Q16_ONE) ||
+        (ctx->voices[MP7_INSTR_CYMBAL_1].pan_q16 != POPPY_Q16_ONE)) {
+        fail("a sample-rate change clears the per-instrument pan");
+    } else {
+        ok("a sample-rate change keeps the per-instrument pan");
+    }
+
     /* Reset restores the panel defaults. */
     mp7_reset(ctx);
     {
@@ -3022,7 +3096,8 @@ static int command_api(void)
                 (i == (unsigned int)MP7_INSTR_QUIJADA)) {
                 expected = POPPY_Q16_ONE / 2;
             }
-            if (ctx->mixer.instr_gain_q16[i] != expected) {
+            if ((ctx->mixer.instr_gain_q16[i] != expected) ||
+                (ctx->mixer.instr_pan_q16[i] != POPPY_Q16_ONE / 2)) {
                 gain_bad = 1;
                 break;
             }
@@ -3203,7 +3278,8 @@ static void usage(const char *program)
            "                     (default dir: build)\n"
            "  --noise            verify the 6 noise voices are uncorrelated\n"
            "  --guiro            verify Guiro gate hold and note-off release\n"
-           "  --mixer            verify pan, Volume, Balance and instrument gains\n"
+           "  --mixer            verify pan, Volume, Balance, instrument gains\n"
+           "                     and instrument pans\n"
            "  --api              verify triggers, rhythm selection, tempo and the\n"
            "                     the panel mix controls\n"
            "  --panel            verify the panel state snapshot and lamp counter\n"

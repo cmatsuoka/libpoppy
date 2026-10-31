@@ -332,10 +332,17 @@ void mp7_get_panel_state(const void *ctx, struct mp7_panel_state *out);
  *
  * instr_gain is a per-instrument gain: 0..1. Tambourine, Guiro and Quijada
  * default to 0.5, matching their panel Additional Volume faders; every other
- * instrument defaults to 1.0. */
+ * instrument defaults to 1.0.
+ *
+ * instr_pan is a per-instrument pan position: 0..1 (0..65536), where 0 is
+ * hard left, 65536 is hard right and 32768 - the default of every
+ * instrument - is centre. The pan law is linear, so a centred voice is half
+ * in each channel. The pan takes effect at once, also on a note that is
+ * already sounding. */
 void mp7_set_volume(mp7_context ctx, int32_t volume_q16);
 void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16);
+void mp7_set_instr_pan(mp7_context ctx, mp7_instr instr, int32_t pan_q16);
 
 /* Copy a view of one factory rhythm into `out`. Out-of-range input yields
  * null pointers and a zeroed mask. */

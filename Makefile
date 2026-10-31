@@ -2,7 +2,8 @@
 #
 # Targets:
 #   all     build libpoppy.a and mp7_test
-#   check   build and run the test harness
+#   check   build and run the test harness for the flags in use
+#   check-alt  run the test harness for the other EXTRA_DEF variant
 #   play    build the OpenAL rhythm player example
 #   clean   remove the build products
 #
@@ -44,8 +45,9 @@ NO_UNWIND := $(shell $(CC) -fno-asynchronous-unwind-tables -fno-unwind-tables \
 #
 # Empty the EXTRA_DEF line to build the minimal library: the 20 factory
 # rhythms, the shared percussion layer, no user pattern slots and no extra
-# entry points. `make check` always builds and tests both configurations,
-# whichever one is the shipped one, so neither can rot.
+# entry points. `make check` tests the configuration the flags select, so
+# the default flags check the extended library; `make check-alt` tests the
+# other one, which is what CI runs for the minimal variant.
 
 EXTRA_DEF := -DLIBPOPPY_EXTRA
 
@@ -147,7 +149,9 @@ $(BUILD)/examples/play_rhythm.o: examples/play_rhythm.c
 	@mkdir -p $(dir $@)
 	$(CC) $(LIB_CFLAGS) $(OPENAL_CFLAGS) -c -o $@ $<
 
-check: $(TEST) $(EXAMPLE_OBJS) $(ALT_TEST)
+# `make check` builds and runs the tests of the configuration the flags
+# select: with the default EXTRA_DEF that is the LIBPOPPY_EXTRA library.
+check: $(TEST) $(EXAMPLE_OBJS)
 	./$(TEST) --init
 	./$(TEST) --sine
 	./$(TEST) --gain
@@ -162,11 +166,10 @@ check: $(TEST) $(EXAMPLE_OBJS) $(ALT_TEST)
 	./$(TEST) --pattern
 	./$(TEST) --rhythms $(BUILD)
 	./$(TEST) --user
-	$(MAKE) --no-print-directory check-alt
 
-# The other configuration runs the same checks as the shipped one. It is a
-# separate build so that both configurations stay verified whichever one the
-# Makefile ships.
+# The other configuration runs the same checks in its own build. `make check`
+# does not run it: CI invokes `make check` and `make check-alt` separately so
+# that the two variants are reported apart.
 check-alt: $(ALT_TEST) $(EXAMPLE_OBJS)
 	./$(ALT_TEST) --init
 	./$(ALT_TEST) --sine

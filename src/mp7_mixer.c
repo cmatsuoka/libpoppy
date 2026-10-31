@@ -5,7 +5,7 @@
  * so a future instrument variant can reuse it without a rename. The mixer
  * state holds one gain per instrument channel, so the shared core is compiled
  * against the variant's instrument count. It applies the per-voice pan, the
- * master Volume, Balance and the per-instrument gains.
+ * master Volume, Balance and the per-instrument gains and pans.
  *
  * There is deliberately no master soft clip: soft clip is a per-voice
  * transfer curve in the noise engine. The only output-stage protection is the
@@ -52,6 +52,7 @@ void poppy_mixer_init(struct poppy_mixer *mixer)
      * defaults after this call. */
     for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
         mixer->instr_gain_q16[i] = POPPY_Q16_ONE;
+        mixer->instr_pan_q16[i] = POPPY_Q16_ONE / 2;
     }
 }
 
@@ -80,6 +81,18 @@ void poppy_mixer_set_instr_gain(struct poppy_mixer *mixer,
     mixer->instr_gain_q16[instr] = poppy_clamp_i32(gain_q16, 0, POPPY_Q16_ONE);
 }
 
+/* The pan of one instrument: 0 is hard left, POPPY_Q16_ONE is hard right and
+ * POPPY_Q16_ONE / 2 is center. */
+void poppy_mixer_set_instr_pan(struct poppy_mixer *mixer,
+                               unsigned int instr,
+                               int32_t pan_q16)
+{
+    if (instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return;
+    }
+    mixer->instr_pan_q16[instr] = poppy_clamp_i32(pan_q16, 0, POPPY_Q16_ONE);
+}
+
 /* Balance gain for one of the two groups.
  *
  * With b in 0..1:
@@ -87,7 +100,7 @@ void poppy_mixer_set_instr_gain(struct poppy_mixer *mixer,
  *   b <  0.5:  Base = 1.0,          cymbals = 0.2 + 1.6*b
  *
  * The two formulas are evaluated as integer fractions of Q16 units so that
- * the 0.5, 0.2 and 1.8 constants are exact at centre, bottom and top. The
+ * the 0.5, 0.2 and 1.8 constants are exact at center, bottom and top. The
  * results are cached, so this lookup stays out of the per-sample divide path. */
 int32_t poppy_mixer_balance_gain_q16(const struct poppy_mixer *mixer,
                                      unsigned int group)
@@ -102,7 +115,7 @@ int32_t poppy_mixer_balance_gain_q16(const struct poppy_mixer *mixer,
 }
 
 /* Linear pan law: pan 0 is hard left, pan 65536 is hard right, 32768 is
- * centre (half the signal into each channel). */
+ * center (half the signal into each channel). */
 int64_t poppy_mixer_pan_left(int64_t sample_q31, int32_t pan_q16)
 {
     return (sample_q31 * (int64_t)(POPPY_Q16_ONE - pan_q16)) >> 16;
