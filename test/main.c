@@ -797,6 +797,28 @@ static int command_pattern(void)
         fail("Rock 1 lost its Base hit at column 12");
     }
 
+    /* The view of a rhythm is the grid the sequencer plays: the same
+     * columns, with the repetitions of the stored period already applied. */
+    {
+        struct mp7_pattern_view view;
+        unsigned int column;
+        int bad = 0;
+
+        mp7_get_factory_pattern(MP7_RHYTHM_ROCK_1, &view);
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if ((view.notes[column] | view.percussion[column]) !=
+                ctx->sequencer.notes[column]) {
+                bad = 1;
+                break;
+            }
+        }
+        if (bad) {
+            fail("the view of a rhythm is not the grid the sequencer plays");
+        } else {
+            ok("the view of a rhythm is the grid the sequencer plays");
+        }
+    }
+
     /* The combined grid carries the shared percussion layer in every column. */
     {
         unsigned int column;
@@ -2664,26 +2686,41 @@ static int command_api(void)
         ok("mp7_version_number() returns the header version");
     }
 
-    /* Factory-pattern access. */
+    /* Factory-pattern access. The view always carries the whole 64-column
+     * grid, with the repetitions of a shorter stored period applied, so the
+     * consumer never has to know the stored period. */
     {
         struct mp7_pattern_view view;
         int bad = 0;
 
         for (i = 0u; i < (unsigned int)MP7_RHYTHM_COUNT; i++) {
+            unsigned int column;
+
             mp7_get_factory_pattern((mp7_rhythm)i, &view);
-            if ((view.notes != mp7_factory_rhythms[i].notes) ||
-                (view.percussion != mp7_shared_percussion_notes) ||
-                (view.enable != mp7_factory_rhythms[i].enable) ||
-                (view.notes_period != mp7_factory_rhythms[i].notes_period) ||
-                (view.percussion_period != MP7_PATTERN_HALF_STEPS)) {
+            if (view.enable != mp7_factory_rhythms[i].enable) {
                 bad = 1;
+                break;
+            }
+            for (column = 0u; column < MP7_PATTERN_COLUMNS; column++) {
+                if ((view.notes[column] !=
+                     pattern_note(&mp7_factory_rhythms[i], column)) ||
+                    (view.percussion[column] != percussion_note(column))) {
+                    bad = 1;
+                    break;
+                }
+            }
+            if (bad) {
                 break;
             }
         }
 
         mp7_get_factory_pattern((mp7_rhythm)MP7_RHYTHM_COUNT, &view);
-        if ((view.notes != 0) || (view.percussion != 0) || (view.enable != 0) ||
-            (view.notes_period != 0) || (view.percussion_period != 0)) {
+        for (i = 0u; i < MP7_PATTERN_COLUMNS; i++) {
+            if ((view.notes[i] != 0) || (view.percussion[i] != 0)) {
+                bad = 1;
+            }
+        }
+        if (view.enable != 0) {
             bad = 1;
         }
 

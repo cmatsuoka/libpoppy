@@ -404,26 +404,32 @@ void mp7_set_instr_pan(mp7_context ctx, mp7_instr instr, int32_t pan_q16)
 void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
 {
     const struct mp7_factory_rhythm *pattern;
+    unsigned int column;
 
     if (out == 0) {
         return;
     }
 
+    memset(out, 0, sizeof(*out));
+
     if ((unsigned int)rhythm >= (unsigned int)MP7_RHYTHM_COUNT) {
-        out->notes = 0;
-        out->percussion = 0;
-        out->enable = 0;
-        out->notes_period = 0;
-        out->percussion_period = 0;
         return;
     }
 
     pattern = &mp7_factory_rhythms[rhythm];
-    out->notes = pattern->notes;
-    out->percussion = mp7_shared_percussion_notes;
+
+    /* The library stores a rhythm's grid in the shortest period that repeats
+     * to fill the cycle, but a consumer always sees the whole cycle: the
+     * stored period is repeated out to the full 64 columns here. The shared
+     * percussion layer is stored in a 32-column period and repeats twice. */
+    for (column = 0u; column < MP7_PATTERN_COLUMNS; column++) {
+        out->notes[column] = pattern->notes[
+            column & (unsigned int)(pattern->notes_period - 1u)];
+        out->percussion[column] = mp7_shared_percussion_notes[
+            column & (MP7_PATTERN_HALF_STEPS - 1u)];
+    }
+
     out->enable = pattern->enable;
-    out->notes_period = pattern->notes_period;
-    out->percussion_period = MP7_PATTERN_HALF_STEPS;
 }
 
 uint64_t mp7_timesig_enable_mask(mp7_timesig timesig)

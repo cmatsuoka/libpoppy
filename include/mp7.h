@@ -131,22 +131,23 @@ typedef void *mp7_context;
  * it with the header's MP7_VERSION_NUMBER to detect a mismatched build. */
 uint32_t mp7_version_number(void);
 
-/* A view of one factory rhythm. The pointers refer to const data owned by the
- * library and remain valid for the life of the process.
+/* The number of columns in a pattern grid. Every grid is this long: the
+ * library stores a grid in the shortest period that repeats to fill the
+ * cycle, but a consumer always sees the whole cycle. */
+#define MP7_PATTERN_COLUMNS 64u
+
+/* A view of one factory rhythm: its whole 64-column grid.
  *
- * `notes` is `notes_period` columns of 16-bit instrument masks: bit n is set
- * when instrument n (in mp7_instr order) plays in that column, so bit 0 is
- * the Bass Drum. It holds the rhythm's own twelve instruments, bits 0..11.
- * `notes_period` is the shortest repeating period of the grid: 16, 32 or 64
- * columns. Column c of the 64-column cycle is
- * `notes[c & (notes_period - 1)]`.
+ * `notes` is the rhythm's own grid, 64 columns of 16-bit instrument masks:
+ * bit n is set when instrument n (in mp7_instr order) plays in that column,
+ * so bit 0 is the Bass Drum. It holds the rhythm's own twelve instruments,
+ * bits 0..11.
  *
- * `percussion` is the shared Tambourine/Guiro/Quijada layer,
- * `percussion_period` columns of the same kind of mask, with bits 12..14
- * (Tambourine 12, Guiro 13, Quijada 14). It is the same array for every
- * rhythm, and it is the layer that plays on its own when no rhythm button is
- * pressed. The complete pattern column c is
- * `notes[c & (notes_period - 1)] | percussion[c & (percussion_period - 1)]`.
+ * `percussion` is the shared Tambourine/Guiro/Quijada layer, 64 columns of
+ * the same kind of mask, with bits 12..14 (Tambourine 12, Guiro 13, Quijada
+ * 14). It is the same layer for every rhythm, and it is the layer that plays
+ * on its own when no rhythm button is pressed. The complete pattern column c
+ * is `notes[c] | percussion[c]`.
  *
  * `enable` is a 64-bit mask, one bit per column; disabled columns take no
  * time. It is one of the masks of the time signatures, and
@@ -155,11 +156,9 @@ uint32_t mp7_version_number(void);
  * every other mask plays straight.
  */
 struct mp7_pattern_view {
-    const uint16_t *notes;
-    const uint16_t *percussion;
+    uint16_t notes[MP7_PATTERN_COLUMNS];
+    uint16_t percussion[MP7_PATTERN_COLUMNS];
     uint64_t enable;
-    uint8_t notes_period;
-    uint8_t percussion_period;
 };
 
 /* Allocate and initialize a context. A sample_rate of 0 selects
@@ -323,8 +322,9 @@ void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16);
 void mp7_set_instr_pan(mp7_context ctx, mp7_instr instr, int32_t pan_q16);
 
-/* Copy a view of one factory rhythm into `out`. Out-of-range input yields
- * null pointers and a zeroed mask. */
+/* Copy a view of one factory rhythm into `out`. The view carries the whole
+ * 64-column grid, with the repetitions of a shorter stored period applied.
+ * Out-of-range input yields a zeroed grid and a zeroed mask. */
 void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out);
 
 /* Map a factory rhythm to the bank and button bit that select it on the
@@ -354,7 +354,7 @@ uint16_t mp7_rhythm_button_bit(mp7_rhythm rhythm);
 #define MP7_USER_PATTERN_COUNT 20u
 
 /* The number of columns in a user pattern grid. */
-#define MP7_USER_PATTERN_COLUMNS 64u
+#define MP7_USER_PATTERN_COLUMNS MP7_PATTERN_COLUMNS
 
 /* Accent flag for a user-defined pattern column. When this bit is set in a
  * column, every instrument in that column (except the gated Guiro) is played

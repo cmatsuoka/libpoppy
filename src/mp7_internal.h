@@ -54,6 +54,12 @@
 #define MP7_PATTERN_HALF_STEPS 32
 #define MP7_PATTERN_STEPS 64
 
+/* The public column count is the cycle length: a view always carries the
+ * whole cycle, and the stored period is repeated out to it. */
+#if MP7_PATTERN_COLUMNS != MP7_PATTERN_STEPS
+#error "the public pattern column count must match the cycle length"
+#endif
+
 /* The step-enable mask of the compound (shuffle) grid: six columns enabled,
  * two disabled, every eight columns. The three built-in shuffle rhythms -
  * March 2/4, March 6/8 and Slow Rock - all use this one mask, so the mask
