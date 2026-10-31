@@ -205,8 +205,8 @@ void mp7_set_sample_rate(mp7_context ctx, uint32_t sample_rate);
 /* Reset the voices, the sequencer and the mix controls to their defaults,
  * keeping the sample rate.
  *
- * In an extended build (-DLIBPOPPY_EXTRA) this also empties the user
- * pattern slots and returns to the preset pattern source. */
+ * In an extended build (-DLIBPOPPY_EXTRA) the user-defined pattern slots
+ * are preserved, but the pattern source is reset to the factory rhythms. */
 void mp7_reset(mp7_context ctx);
 
 /* Render `frames` stereo interleaved frames into `stereo_out`.

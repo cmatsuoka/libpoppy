@@ -1358,17 +1358,88 @@ static int command_user(void)
         }
     }
 
-    /* A reset empties the slots and returns to the preset source. */
-    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
-                      (uint8_t)MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_4_4);
-    mp7_set_user_pattern(ctx, 4u, &pattern);
-    mp7_reset(ctx);
-    if (mp7_get_pattern_source(ctx) != MP7_PATTERN_SOURCE_PRESET) {
-        fail("a reset did not return to the preset source");
-    } else if (mp7_get_user_pattern(ctx, 0u, &readback)) {
-        fail("a reset did not empty the user slots");
-    } else {
-        ok("a reset empties the user slots and returns to the preset source");
+    /* A reset returns to the preset source but keeps the user slots.
+     *
+     * The check covers the lowest and the highest slot, the grid as well as
+     * the time signature and the period, and a slot that was emptied with a
+     * null pattern: it must stay empty across the reset. */
+    {
+        struct mp7_user_pattern low;
+        struct mp7_user_pattern mid;
+        struct mp7_user_pattern high;
+        int same;
+
+        fill_user_pattern(&low, (uint16_t)(1u << MP7_INSTR_BASS),
+                          (uint8_t)MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_4_4);
+        fill_user_pattern(&mid, (uint16_t)(1u << MP7_INSTR_SNARE_1),
+                          (uint8_t)MP7_PATTERN_HALF_STEPS, MP7_TIMESIG_7_4);
+        fill_user_pattern(&high, (uint16_t)(1u << MP7_INSTR_HIHAT),
+                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_6_8);
+
+        mp7_set_user_pattern(ctx, 0u, &low);
+        mp7_set_user_pattern(ctx, 4u, &mid);
+        mp7_set_user_pattern(ctx, MP7_USER_PATTERN_COUNT - 1u, &high);
+        mp7_set_user_pattern(ctx, 1u, 0);
+
+        mp7_reset(ctx);
+
+        if (mp7_get_pattern_source(ctx) != MP7_PATTERN_SOURCE_PRESET) {
+            fail("a reset did not return to the preset source");
+            goto reset_done;
+        }
+
+        same = 1;
+        for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
+            if (!mp7_get_user_pattern(ctx, 0u, &readback) ||
+                (readback.notes[column] != low.notes[column]) ||
+                (readback.timesig != low.timesig) ||
+                (readback.notes_period != low.notes_period)) {
+                same = 0;
+            }
+        }
+        if (!same) {
+            fail("a reset did not keep the lowest user slot");
+            goto reset_done;
+        }
+
+        same = 1;
+        for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
+            if (!mp7_get_user_pattern(ctx, 4u, &readback) ||
+                (readback.notes[column] != mid.notes[column]) ||
+                (readback.timesig != mid.timesig) ||
+                (readback.notes_period != mid.notes_period)) {
+                same = 0;
+            }
+        }
+        if (!same) {
+            fail("a reset did not keep the middle user slot");
+            goto reset_done;
+        }
+
+        same = 1;
+        for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
+            if (!mp7_get_user_pattern(ctx, MP7_USER_PATTERN_COUNT - 1u,
+                                     &readback) ||
+                (readback.notes[column] != high.notes[column]) ||
+                (readback.timesig != high.timesig) ||
+                (readback.notes_period != high.notes_period)) {
+                same = 0;
+            }
+        }
+        if (!same) {
+            fail("a reset did not keep the highest user slot");
+            goto reset_done;
+        }
+
+        if (mp7_get_user_pattern(ctx, 1u, &readback)) {
+            fail("a reset refilled an emptied user slot");
+            goto reset_done;
+        }
+
+        ok("a reset keeps the user slots and returns to the preset source");
+
+    reset_done:
+        (void)0;
     }
 
     /* A user pattern plays. */

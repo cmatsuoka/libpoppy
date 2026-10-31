@@ -48,7 +48,10 @@ void mp7_destroy_context(mp7_context ctx)
 }
 
 /* Prepare a context. Internal: mp7_create_context() and mp7_reset() drive
- * it, and the public API has no other entry point. */
+ * it, and the public API has no other entry point.
+ *
+ * This zeroes the whole context, so it also clears the user-defined pattern
+ * slots in an extended build. */
 void mp7_init(mp7_context ctx, uint32_t sample_rate)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
@@ -121,9 +124,20 @@ void mp7_reset(mp7_context ctx)
         return;
     }
 
-    /* Keep the sample rate, drop everything else back to the defaults. */
+    /* Keep the sample rate and the user-defined pattern slots, and drop
+     * everything else back to the defaults. */
     sample_rate = c->sample_rate;
+#ifdef LIBPOPPY_EXTRA
+    {
+        struct mp7_user_slot saved_patterns[MP7_USER_PATTERN_COUNT];
+
+        memcpy(saved_patterns, c->user_patterns, sizeof(saved_patterns));
+        mp7_init(ctx, sample_rate);
+        memcpy(c->user_patterns, saved_patterns, sizeof(saved_patterns));
+    }
+#else
     mp7_init(ctx, sample_rate);
+#endif
 }
 
 /* Effective per-voice gain: its fixed Level, scaled by Balance and by the

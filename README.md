@@ -151,7 +151,7 @@ step-enable mask from it, so a pattern cannot carry a custom mask (sorry, no
 `mp7_timesig_enable_mask()` returns the mask of each of them.
 
 `mp7_get_user_pattern()` reads a slot back, `mp7_set_user_pattern(ctx, index,
-NULL)` empties one, and `mp7_reset()` empties all of them and returns to the
+NULL)` empties one, and `mp7_reset()` keeps the slots but returns to the
 preset source. A pattern that is playing changes with the pattern.
 
 ## Synthesis tweaks
