@@ -2700,7 +2700,7 @@ static int command_api(void)
         (mp7_timesig_enable_mask(MP7_TIMESIG_3_4) !=
          UINT64_C(0xFF0F0FFFFF0F0FFF)) ||
         (mp7_timesig_enable_mask(MP7_TIMESIG_5_4) !=
-         UINT64_C(0x000000FFFFFFFFFF)) ||
+         UINT64_C(0x0F0F3F3F0F0F3F3F)) ||
         (mp7_timesig_enable_mask(MP7_TIMESIG_7_4) !=
          UINT64_C(0x00FFFFFFFFFFFFFF)) ||
         (mp7_timesig_enable_mask(MP7_TIMESIG_2_4) != MP7_PATTERN_COMPOUND_MASK) ||

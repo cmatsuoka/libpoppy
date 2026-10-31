@@ -115,27 +115,6 @@ typedef enum {
 
 /* The step-enable mask of a time signature: a 64-bit word, one bit per
  * column, and a disabled column takes no time.
- *
- * This is the mask the library gives a pattern of that signature, and it is
- * what the pattern plays on. The 4/4 mask enables every column, the 5/4
- * mask the first forty and the 7/4 mask the first fifty-six, so a bar of
- * either of them is one bar in the cycle. The mask of the 2/4 and of the
- * 6/8 is the compound one: six columns enabled and two disabled, every
- * eight columns, so the three built-in shuffle rhythms - March 2/4, March
- * 6/8 and Slow Rock - all share it and the mask cannot tell them apart.
- *
- * The masks are not constants of the public API: a pattern carries a time
- * signature, never a mask, and the mask of a signature is read with this
- * function. An unknown signature has no mask and yields 0.
- *
- * The mask also decides the grid the pattern plays on. The Mini Pops-7 has no
- * swing switch: the shuffle is a property of the step grid. A straight beat
- * holds eight columns (a 32nd note each) and a compound beat six (an 8th-note
- * triplet each), and only the compound grid can express a 2:1 swung eighth,
- * because only there is an eighth three columns long. So the compound mask -
- * the mask of the 2/4 and of the 6/8 - plays on the compound grid and every
- * other mask plays straight, and a pattern cannot ask for a shuffle on a grid
- * that cannot carry one.
  */
 uint64_t mp7_timesig_enable_mask(mp7_timesig timesig);
 

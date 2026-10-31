@@ -68,25 +68,12 @@
 /* The step-enable masks of the time signatures.
  *
  * Every pattern's mask comes from its time signature, so the masks are
- * defined once, here, and a pattern never carries a mask of its own. The
+ * defined once, here, and a pattern doesn't carries a mask of its own. The
  * 4/4 mask enables every column; the 3/4 mask skips four columns twice in
- * every half of the cycle; the 2/4 and the 6/8 share the compound mask,
- * because the reference gives all three shuffle rhythms one and the same
- * hole pattern.
- *
- * The 3/4 mask is the library's own: the reference's mask is this one
- * rotated by four columns, and the rotation puts the Waltz's and the Jazz
- * Waltz's snares on disabled columns, so those snares never sound. The
- * value, the ASCII art in src/mp7_tables.c and the assertion in test/main.c
- * carry the library's mask together.
- *
- * The 5/4 and the 7/4 masks are the library's own as well: the hardware
- * has no such meters. They put one bar in the cycle - five beats and seven
- * beats - and skip the columns of the cycle that are not part of it, so a
- * bar of either meter is as long as the meter says. */
+ * every half of the cycle. */
 #define MP7_ENABLE_4_4 UINT64_C(0xFFFFFFFFFFFFFFFF)
 #define MP7_ENABLE_3_4 UINT64_C(0xFF0F0FFFFF0F0FFF)
-#define MP7_ENABLE_5_4 UINT64_C(0x000000FFFFFFFFFF)
+#define MP7_ENABLE_5_4 UINT64_C(0x0F0F3F3F0F0F3F3F)
 #define MP7_ENABLE_7_4 UINT64_C(0x00FFFFFFFFFFFFFF)
 #define MP7_ENABLE_2_4 MP7_PATTERN_COMPOUND_MASK
 #define MP7_ENABLE_6_8 MP7_PATTERN_COMPOUND_MASK
