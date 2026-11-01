@@ -212,7 +212,8 @@ const int32_t poppy_softclip[POPPY_SOFTCLIP_TABLE_SIZE] = {
  * rhythms - March 2/4, March 6/8 and Slow Rock - so the mask cannot tell
  * 2/4 from 6/8 and the two names only record the rhythm's panel name. The
  * value is MP7_PATTERN_COMPOUND_MASK, because the grid also decides the
- * subdivision: a pattern on this mask plays compound.
+ * subdivision: a pattern on this mask plays compound. The library's 5/4
+ * signature keeps its own hole pattern but plays on the same compound grid.
  *
  * A grid stores only its shortest repeating period (16, 32 or 64
  * columns) and sets notes_period accordingly; the sequencer wraps the

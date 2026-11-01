@@ -148,7 +148,8 @@ mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
 The time signature is the only way to shape the grid: the library derives the
 step-enable mask from it, so a pattern cannot carry a custom mask (sorry, no
 3/5 patterns for now). Valid signatures are 2/4, 3/4, 4/4, 5/4, 6/8 and 7/4.
-`mp7_timesig_enable_mask()` returns the mask of each of them.
+`mp7_timesig_enable_mask()` returns the mask of each of them. The 2/4, 5/4 and
+6/8 signatures play on the compound grid; the others play straight.
 
 `mp7_get_user_pattern()` reads a slot back, `mp7_set_user_pattern(ctx, index,
 NULL)` empties one, and `mp7_reset()` keeps the slots but returns to the

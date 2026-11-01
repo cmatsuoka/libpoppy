@@ -95,11 +95,12 @@ typedef enum {
  * own: the library derives the mask from the signature, so a pattern cannot
  * ask for a hole pattern the hardware does not have.
  *
- * A bar is as long as the signature says: the 3/4 bar is three beats, the
- * 4/4 bar four, the 5/4 bar five and the 7/4 bar seven, and the grid skips
- * the columns that are not part of a bar. The 2/4 and the 6/8 share one
- * hole pattern, the compound one, so their masks are the same and the name
- * only records the label the rhythm carries on the panel.
+ * The grid skips the columns that are not part of the metric. The 2/4 and
+ * the 6/8 share one hole pattern, the compound one, so their masks are the
+ * same and the name only records the label the rhythm carries on the panel.
+ * The 5/4 has a hole pattern of its own but plays on the compound grid as
+ * well, so it keeps the triplet feel of its grouped columns and its loop is
+ * slower than the same columns on the straight grid.
  *
  * The zero value is 4/4, so a pattern that is only zeroed is a straight
  * 64-column loop. */
@@ -152,8 +153,8 @@ uint32_t mp7_version_number(void);
  * `enable` is a 64-bit mask, one bit per column; disabled columns take no
  * time. It is one of the masks of the time signatures, and
  * mp7_timesig_enable_mask() returns the mask of each of them. The mask also
- * decides the grid the rhythm plays on: the compound mask plays compound,
- * every other mask plays straight.
+ * decides the grid the rhythm plays on: the compound mask and the 5/4 mask
+ * play compound, every other mask plays straight.
  */
 struct mp7_pattern_view {
     uint16_t notes[MP7_PATTERN_COLUMNS];
@@ -388,7 +389,7 @@ typedef enum {
  * `timesig` is the time signature of the pattern. It is the only way to
  * shape the grid: the library derives the step-enable mask from it, so the
  * pattern cannot carry a mask of its own and cannot ask for a hole pattern
- * the hardware does not have. A 2/4 or 6/8 pattern plays on the compound
+ * the hardware does not have. A 2/4, 5/4 or 6/8 pattern plays on the compound
  * (shuffle) grid, every other signature plays straight. An unknown signature
  * is rejected.
  *

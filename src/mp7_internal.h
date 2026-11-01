@@ -65,10 +65,8 @@
  * March 2/4, March 6/8 and Slow Rock - all use this one mask, so the mask
  * cannot tell them apart.
  *
- * A pattern with this mask plays on the compound grid, that is, as a
- * shuffle; every other mask plays straight. It is the mask of the 2/4 and
- * the 6/8 signature, and the library hands it out through
- * mp7_timesig_enable_mask(). */
+ * It is the mask of the 2/4 and the 6/8 signature, and the library hands it
+ * out through mp7_timesig_enable_mask(). */
 #define MP7_PATTERN_COMPOUND_MASK UINT64_C(0x3F3F3F3F3F3F3F3F)
 
 /* The step-enable masks of the time signatures.
@@ -88,8 +86,8 @@
  *
  * The subdivision is not a setting of its own and it is not part of the
  * public API: it follows the pattern's step-enable mask, and the mask
- * follows the pattern's time signature. The compound mask plays compound,
- * every other mask plays straight. */
+ * follows the pattern's time signature. The compound mask and the 5/4 mask
+ * play compound, every other mask plays straight. */
 typedef enum {
     MP7_SUBDIV_STRAIGHT = 0,
     MP7_SUBDIV_COMPOUND = 1
@@ -97,11 +95,16 @@ typedef enum {
 
 /* The compound (shuffle) grid is the one the shuffle rhythms play on, and it
  * is the only grid that can carry a 2:1 swung eighth. The subdivision of a
- * pattern follows its enable mask: the compound mask plays compound, every
- * other mask plays straight. */
+ * pattern follows its enable mask: the compound mask and the 5/4 mask play
+ * compound, every other mask plays straight.
+ *
+ * The 5/4 signature has a hole pattern of its own, but it plays on the
+ * compound grid so its grouped columns keep a triplet feel and the loop is
+ * longer than the same number of columns on the straight grid. */
 static inline uint8_t mp7_mask_is_compound(uint64_t enable)
 {
-    return (enable == MP7_PATTERN_COMPOUND_MASK) ? 1u : 0u;
+    return ((enable == MP7_PATTERN_COMPOUND_MASK) ||
+            (enable == MP7_ENABLE_5_4)) ? 1u : 0u;
 }
 
 /* The fixed Tambourine/Guiro/Quijada layer. It is present in every factory
@@ -365,7 +368,8 @@ struct mp7_voice {
  *
  * `subdivision` is the grid the combined pattern plays on. It is derived from
  * the enable masks of the selected patterns, not from the combined mask: a
- * compound pattern combined with a straight one plays compound.
+ * compound pattern combined with a straight one plays compound. The 5/4
+ * signature uses the compound grid as well, with its own step-enable mask.
  *
  * `pending_selected` holds a rhythm selection that is waiting for the current
  * pattern cycle to finish; `pending_valid` is set while it differs from

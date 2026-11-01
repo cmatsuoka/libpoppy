@@ -1358,6 +1358,35 @@ static int command_user(void)
         }
     }
 
+    /* The 5/4 signature uses the compound grid, so its grouped columns keep a
+     * triplet feel and the loop is slower than the same columns straight. The
+     * 7/4 signature has no such grouping and stays straight. */
+    {
+        struct mp7_user_pattern fives;
+        struct mp7_user_pattern sevens;
+
+        mp7_init(ctx, sample_rate);
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+
+        fill_user_pattern(&fives, (uint16_t)(1u << MP7_INSTR_BASS),
+                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_5_4);
+        mp7_set_user_pattern(ctx, 0u, &fives);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
+        if (ctx->sequencer.subdivision != (uint8_t)MP7_SUBDIV_COMPOUND) {
+            fail("a 5/4 pattern is not on the compound grid");
+        }
+
+        fill_user_pattern(&sevens, (uint16_t)(1u << MP7_INSTR_BASS),
+                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_7_4);
+        mp7_set_user_pattern(ctx, 0u, &sevens);
+        if (ctx->sequencer.subdivision != (uint8_t)MP7_SUBDIV_STRAIGHT) {
+            fail("a 7/4 pattern did not stay on the straight grid");
+        } else {
+            ok("5/4 plays compound and 7/4 stays straight");
+        }
+    }
+
     /* The switch keeps the playhead and cancels a pending change. */
     mp7_init(ctx, sample_rate);
     mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
@@ -2789,6 +2818,19 @@ static int command_api(void)
         fail("the time signature masks are wrong");
     } else {
         ok("every time signature has its own enable mask");
+    }
+
+    /* The grid of a signature follows its mask: the 2/4, the 5/4 and the 6/8
+     * play compound, the others play straight. */
+    if ((mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_2_4)) != 1u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_6_8)) != 1u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_5_4)) != 1u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_3_4)) != 0u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_4_4)) != 0u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_7_4)) != 0u)) {
+        fail("the grid of a time signature is wrong");
+    } else {
+        ok("2/4, 5/4 and 6/8 play compound; 3/4, 4/4 and 7/4 play straight");
     }
 
     /* Velocity 0 is note-off. It releases the gated Guiro and leaves a

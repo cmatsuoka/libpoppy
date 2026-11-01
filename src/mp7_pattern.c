@@ -7,10 +7,10 @@
  * Selecting several rhythms combines them by OR-ing the note masks and
  * AND-ing the enable masks.
  *
- * The grid a pattern plays on follows its enable mask: the compound mask
- * plays compound, every other mask plays straight. The subdivision of a
- * selection is therefore the compound one as soon as one of the selected
- * patterns is on the compound grid.
+ * The grid a pattern plays on follows its enable mask: the compound mask and
+ * the 5/4 mask play compound, every other mask plays straight. The
+ * subdivision of a selection is therefore the compound one as soon as one of
+ * the selected patterns is on the compound grid.
  *
  * The Tambourine, Guiro and Quijada hits are the same in every rhythm and
  * live in their own definition, mp7_shared_percussion_notes. It is OR-ed into
