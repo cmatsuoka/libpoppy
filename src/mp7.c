@@ -401,35 +401,23 @@ void mp7_set_instr_pan(mp7_context ctx, mp7_instr instr, int32_t pan_q16)
     c->voices[instr].pan_q16 = c->mixer.instr_pan_q16[instr];
 }
 
-void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out)
+void mp7_get_selection_pattern(mp7_context ctx, mp7_bank bank, uint16_t buttons,
+                               struct mp7_pattern_view *out)
 {
-    const struct mp7_factory_rhythm *pattern;
-    unsigned int column;
+    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
 
     if (out == 0) {
         return;
     }
 
-    memset(out, 0, sizeof(*out));
-
-    if ((unsigned int)rhythm >= (unsigned int)MP7_RHYTHM_COUNT) {
+    if (c == 0) {
+        memset(out, 0, sizeof(*out));
         return;
     }
 
-    pattern = &mp7_factory_rhythms[rhythm];
-
-    /* The library stores a rhythm's grid in the shortest period that repeats
-     * to fill the cycle, but a consumer always sees the whole cycle: the
-     * stored period is repeated out to the full 64 columns here. The shared
-     * percussion layer is stored in a 32-column period and repeats twice. */
-    for (column = 0u; column < MP7_PATTERN_COLUMNS; column++) {
-        out->notes[column] = pattern->notes[
-            column & (unsigned int)(pattern->notes_period - 1u)];
-        out->percussion[column] = mp7_shared_percussion_notes[
-            column & (MP7_PATTERN_HALF_STEPS - 1u)];
-    }
-
-    out->enable = pattern->enable;
+    /* The queued selection is asked for the same way as the running one, so
+     * the schedule flag is not part of the button mask here. */
+    mp7_pattern_compose(c, rhythm_selection(bank, buttons), out);
 }
 
 uint64_t mp7_timesig_enable_mask(mp7_timesig timesig)
@@ -439,10 +427,10 @@ uint64_t mp7_timesig_enable_mask(mp7_timesig timesig)
         return MP7_ENABLE_2_4;
     case MP7_TIMESIG_3_4:
         return MP7_ENABLE_3_4;
-    case MP7_TIMESIG_5_4:
-        return MP7_ENABLE_5_4;
-    case MP7_TIMESIG_6_8:
-        return MP7_ENABLE_6_8;
+    case MP7_TIMESIG_5_4T:
+        return MP7_ENABLE_5_4T;
+    case MP7_TIMESIG_6_8T:
+        return MP7_ENABLE_6_8T;
     case MP7_TIMESIG_7_4:
         return MP7_ENABLE_7_4;
     case MP7_TIMESIG_4_4:
@@ -450,6 +438,19 @@ uint64_t mp7_timesig_enable_mask(mp7_timesig timesig)
     default:
         return 0u;
     }
+}
+
+mp7_timesig mp7_timesig_of_mask(uint64_t mask)
+{
+    unsigned int timesig;
+
+    for (timesig = 0u; timesig < (unsigned int)MP7_TIMESIG_COUNT; timesig++) {
+        if (mp7_timesig_enable_mask((mp7_timesig)timesig) == mask) {
+            return (mp7_timesig)timesig;
+        }
+    }
+
+    return MP7_TIMESIG_NONE;
 }
 
 mp7_bank mp7_rhythm_bank(mp7_rhythm rhythm)
@@ -475,7 +476,6 @@ bool mp7_set_user_pattern(mp7_context ctx,
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
     struct mp7_user_slot *slot;
-    uint8_t period;
     unsigned int column;
 
     if (c == 0) {
@@ -490,7 +490,6 @@ bool mp7_set_user_pattern(mp7_context ctx,
     if (pattern == 0) {
         /* An empty slot plays nothing and disables no column. */
         memset(slot, 0, sizeof(*slot));
-        slot->notes_period = (uint8_t)MP7_PATTERN_STEPS;
         return true;
     }
 
@@ -502,22 +501,14 @@ bool mp7_set_user_pattern(mp7_context ctx,
         return false;
     }
 
-    /* The stored period is the shortest repeating length of the grid, and it
-     * is always a power of two, so the column wraps with a mask. */
-    period = pattern->notes_period;
-    if ((period != (uint8_t)MP7_PATTERN_QUARTER_STEPS) &&
-        (period != (uint8_t)MP7_PATTERN_HALF_STEPS) &&
-        (period != (uint8_t)MP7_PATTERN_STEPS)) {
-        period = (uint8_t)MP7_PATTERN_STEPS;
-    }
-
+    /* The grid is the whole cycle: a pattern is 64 columns long, and what
+     * is shorter than a bar is masked out by the mask of the signature. */
     memset(slot->notes, 0, sizeof(slot->notes));
-    for (column = 0u; column < (unsigned int)period; column++) {
+    for (column = 0u; column < (unsigned int)MP7_PATTERN_STEPS; column++) {
         slot->notes[column] = pattern->notes[column];
     }
 
     slot->timesig = (uint8_t)pattern->timesig;
-    slot->notes_period = period;
     slot->used = 1u;
 
     /* A pattern that is playing changes with the pattern: the grid is
@@ -555,7 +546,6 @@ bool mp7_get_user_pattern(const void *ctx,
 
     memcpy(out->notes, slot->notes, sizeof(out->notes));
     out->timesig = (mp7_timesig)slot->timesig;
-    out->notes_period = slot->notes_period;
 
     return true;
 }

@@ -77,10 +77,10 @@
  * every half of the cycle. */
 #define MP7_ENABLE_4_4 UINT64_C(0xFFFFFFFFFFFFFFFF)
 #define MP7_ENABLE_3_4 UINT64_C(0xFF0F0FFFFF0F0FFF)
-#define MP7_ENABLE_5_4 UINT64_C(0x0F0F3F3F0F0F3F3F)
+#define MP7_ENABLE_5_4T UINT64_C(0x0F0F3F3F0F0F3F3F)
 #define MP7_ENABLE_7_4 UINT64_C(0x00FFFFFFFFFFFFFF)
 #define MP7_ENABLE_2_4 MP7_PATTERN_COMPOUND_MASK
-#define MP7_ENABLE_6_8 MP7_PATTERN_COMPOUND_MASK
+#define MP7_ENABLE_6_8T MP7_PATTERN_COMPOUND_MASK
 
 /* The grid a pattern plays on.
  *
@@ -104,7 +104,7 @@ typedef enum {
 static inline uint8_t mp7_mask_is_compound(uint64_t enable)
 {
     return ((enable == MP7_PATTERN_COMPOUND_MASK) ||
-            (enable == MP7_ENABLE_5_4)) ? 1u : 0u;
+            (enable == MP7_ENABLE_5_4T)) ? 1u : 0u;
 }
 
 /* The fixed Tambourine/Guiro/Quijada layer. It is present in every factory
@@ -118,10 +118,19 @@ static inline uint8_t mp7_mask_is_compound(uint64_t enable)
  * Tambourine, which is the first of the shared percussion voices. */
 #define MP7_PATTERN_RHYTHM_MASK 0x0FFFu
 
+/* Both the rhythm grids and the shared percussion layer may store only a
+ * shorter period (16 or 32 columns) that repeats to fill the 64-column
+ * cycle. The period is always a power of two, so masking wraps the column. */
+static inline unsigned int wrap_column(unsigned int column, unsigned int period)
+{
+    return column & (period - 1u);
+}
+
 struct mp7_factory_rhythm {
     const uint16_t *notes; /* notes_period columns, bit n = instrument n plays */
     uint64_t enable;        /* bit c = column c is enabled */
     uint8_t notes_period;   /* columns in notes: 16, 32 or 64 */
+    mp7_timesig timesig;    /* the meter the rhythm is named after */
 };
 
 extern const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT];
@@ -154,7 +163,6 @@ extern const uint16_t mp7_shared_percussion_notes[MP7_PATTERN_HALF_STEPS];
 struct mp7_user_slot {
     uint16_t notes[MP7_PATTERN_STEPS];
     uint8_t timesig;      /* mp7_timesig of the pattern */
-    uint8_t notes_period;
     uint8_t used;
 };
 
@@ -477,6 +485,12 @@ int64_t mp7_engine_process(struct mp7_voice *voice);
 
 /* Rhythm player internals. These are the testable core of the sequencer; the
  * public rhythm setters in mp7.c wrap them. */
+
+/* The composition of a selection: the grid the sequencer plays and the
+ * pattern view the host prints. It is a pure function of the selection and
+ * of the source, so it can be asked for a selection that is not playing. */
+void mp7_pattern_compose(struct mp7_context_s *ctx, uint32_t selected,
+                         struct mp7_pattern_view *out);
 void mp7_pattern_init(struct mp7_context_s *ctx);
 void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask);
 void mp7_pattern_set_tempo(struct mp7_context_s *ctx, uint32_t bpm);

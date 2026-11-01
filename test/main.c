@@ -798,16 +798,18 @@ static int command_pattern(void)
     }
 
     /* The view of a rhythm is the grid the sequencer plays: the same
-     * columns, with the repetitions of the stored period already applied. */
+     * columns, with the repetitions of the stored period already applied
+     * and the shared percussion layer merged into it. */
     {
         struct mp7_pattern_view view;
         unsigned int column;
         int bad = 0;
 
-        mp7_get_factory_pattern(MP7_RHYTHM_ROCK_1, &view);
+        mp7_get_selection_pattern(ctx, MP7_BANK_A,
+                                   mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1),
+                                   &view);
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            if ((view.notes[column] | view.percussion[column]) !=
-                ctx->sequencer.notes[column]) {
+            if (view.notes[column] != ctx->sequencer.notes[column]) {
                 bad = 1;
                 break;
             }
@@ -1041,6 +1043,130 @@ static int command_pattern(void)
         ok("a column the new grid disables is skipped, not waited out");
     }
 
+    /* The signature of a mask is the inverse of the mask of a signature,
+     * and a mask that belongs to no signature has none. The compound mask
+     * is the mask of the 2/4 and of the 6/8 alike, so it names the 2/4. */
+    {
+        int bad = 0;
+        unsigned int timesig;
+
+        for (timesig = 0u; timesig < (unsigned int)MP7_TIMESIG_COUNT; timesig++) {
+            mp7_timesig found = mp7_timesig_of_mask(
+                mp7_timesig_enable_mask((mp7_timesig)timesig));
+
+            if ((found != (mp7_timesig)timesig) &&
+                !((found == MP7_TIMESIG_2_4) &&
+                  (timesig == (unsigned int)MP7_TIMESIG_6_8T))) {
+                bad = 1;
+                break;
+            }
+        }
+        if (mp7_timesig_of_mask(UINT64_C(0x0F0F0F0F0F0F0F0F)) !=
+            MP7_TIMESIG_NONE) {
+            bad = 1;
+        }
+        if (bad) {
+            fail("mp7_timesig_of_mask() is not the inverse of the mask");
+        } else {
+            ok("mp7_timesig_of_mask() names the signature of a mask");
+        }
+    }
+
+    /* The view of a selection is the grid the sequencer plays, for one
+     * rhythm and for several of them. */
+    {
+        struct mp7_pattern_view view;
+        unsigned int column;
+        int bad = 0;
+
+        mp7_init(ctx, sample_rate);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+        mp7_get_selection_pattern(ctx, MP7_BANK_A,
+                                   mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1),
+                                   &view);
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if (view.notes[column] != ctx->sequencer.notes[column]) {
+                bad = 1;
+                break;
+            }
+        }
+        if ((view.enable != ctx->sequencer.enable) ||
+            (view.compound != (ctx->sequencer.subdivision ==
+                               (uint8_t)MP7_SUBDIV_COMPOUND))) {
+            bad = 1;
+        }
+
+        /* Two rhythms: the notes are OR-ed, the masks are AND-ed, and the
+         * grid follows the masks of the rhythms in it. Rock 1 is straight
+         * and March 2/4 is compound, so the selection plays compound even
+         * though its combined mask is the compound one of March 2/4. */
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                          mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4));
+        mp7_get_selection_pattern(ctx, MP7_BANK_A,
+                                   mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1) |
+                                   mp7_rhythm_button_bit(MP7_RHYTHM_MARCH_2_4),
+                                   &view);
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if (view.notes[column] != ctx->sequencer.notes[column]) {
+                bad = 1;
+                break;
+            }
+        }
+        if (view.enable != ctx->sequencer.enable) {
+            bad = 1;
+        }
+        if (view.compound != 1u) {
+            fail("a selection of a straight and a compound rhythm is not "
+                 "compound");
+            bad = 1;
+        }
+
+        /* Rock 1 and the Waltz carry different signatures, so the selection
+         * is a mixed one even though the combined mask is the one of the
+         * Waltz. */
+        if (view.timesig != MP7_TIMESIG_NONE) {
+            fail("a selection of different signatures is not mixed");
+            bad = 1;
+        }
+
+        if (bad) {
+            fail("the view of a selection is not the grid the sequencer plays");
+        } else {
+            ok("the view of a selection is the grid the sequencer plays");
+        }
+    }
+
+    /* The view of a selection does not touch the sequencer: it can be asked
+     * for a selection that is not playing. */
+    {
+        struct mp7_pattern_view view;
+        uint16_t before[MP7_PATTERN_STEPS];
+        unsigned int column;
+        int bad = 0;
+
+        mp7_init(ctx, sample_rate);
+        mp7_select_rhythm(ctx, MP7_BANK_A,
+                          mp7_rhythm_button_bit(MP7_RHYTHM_ROCK_1));
+        memcpy(before, ctx->sequencer.notes, sizeof(before));
+
+        mp7_get_selection_pattern(ctx, MP7_BANK_A,
+                                   mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ),
+                                   &view);
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if (ctx->sequencer.notes[column] != before[column]) {
+                bad = 1;
+                break;
+            }
+        }
+        if (bad) {
+            fail("asking for a selection changed the running one");
+        } else {
+            ok("asking for a selection does not touch the sequencer");
+        }
+    }
+
     free(ctx);
     return failures == 0 ? 0 : 1;
 }
@@ -1070,19 +1196,17 @@ static double biquad_pole_radius(const struct poppy_biquad *filter)
     }
 }
 
-/* A user pattern with one instrument mask on every column of its period. */
+/* A user pattern with one instrument mask on every column of the cycle. */
 static void fill_user_pattern(struct mp7_user_pattern *pattern,
                               uint16_t mask,
-                              uint8_t period,
                               mp7_timesig timesig)
 {
     unsigned int column;
 
     memset(pattern, 0, sizeof(*pattern));
     pattern->timesig = timesig;
-    pattern->notes_period = period;
 
-    for (column = 0u; column < (unsigned int)period; column++) {
+    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
         pattern->notes[column] = mask;
     }
 }
@@ -1095,10 +1219,7 @@ static int user_grid_matches(const struct mp7_sequencer *seq,
     unsigned int column;
 
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        uint16_t expect = pattern->notes[
-            column & (unsigned int)(pattern->notes_period - 1u)];
-
-        if (seq->notes[column] != expect) {
+        if (seq->notes[column] != pattern->notes[column]) {
             return 0;
         }
     }
@@ -1136,15 +1257,13 @@ static int command_user(void)
     mp7_init(ctx, sample_rate);
 
     /* A pattern survives the round trip through a slot. */
-    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
-                      (uint8_t)MP7_PATTERN_HALF_STEPS, MP7_TIMESIG_4_4);
+    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_4_4);
     if (!mp7_set_user_pattern(ctx, 0u, &pattern)) {
         fail("mp7_set_user_pattern() rejected a valid slot");
     } else if (!mp7_get_user_pattern(ctx, 0u, &readback)) {
         fail("mp7_get_user_pattern() did not return a stored pattern");
     } else {
-        int same = (readback.timesig == pattern.timesig) &&
-                   (readback.notes_period == pattern.notes_period);
+        int same = (readback.timesig == pattern.timesig);
 
         for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
             if (readback.notes[column] != pattern.notes[column]) {
@@ -1176,7 +1295,6 @@ static int command_user(void)
         struct mp7_user_pattern unknown;
 
         fill_user_pattern(&unknown, (uint16_t)(1u << MP7_INSTR_SNARE_1),
-                          (uint8_t)MP7_PATTERN_STEPS,
                           (mp7_timesig)MP7_TIMESIG_COUNT);
         if (mp7_set_user_pattern(ctx, 0u, &unknown)) {
             fail("mp7_set_user_pattern() accepted an unknown time signature");
@@ -1199,8 +1317,7 @@ static int command_user(void)
 
     /* The preset source ignores the user slots. Button 0 is the Waltz, so
      * the selection points at slot 0 in the user source. */
-    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
-                      (uint8_t)MP7_PATTERN_HALF_STEPS, MP7_TIMESIG_4_4);
+    fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_4_4);
     mp7_set_user_pattern(ctx, 0u, &pattern);
     mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
     if (mp7_get_pattern_source(ctx) != MP7_PATTERN_SOURCE_PRESET) {
@@ -1222,6 +1339,36 @@ static int command_user(void)
         ok("the source switch points the selection at the user slots");
     }
 
+    /* The view of one pattern follows the source: the user slot while the
+     * user source is selected, the factory rhythm in the preset source. */
+    {
+        struct mp7_pattern_view view;
+        unsigned int column;
+        int bad = 0;
+
+        mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
+        mp7_get_selection_pattern(ctx, MP7_BANK_A,
+                                   mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ),
+                                   &view);
+        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+            if (view.notes[column] != pattern.notes[column]) {
+                bad = 1;
+                break;
+            }
+        }
+        if (view.enable != mp7_timesig_enable_mask(pattern.timesig)) {
+            bad = 1;
+        }
+        if (view.timesig != pattern.timesig) {
+            bad = 1;
+        }
+        if (bad) {
+            fail("the view of a user pattern is not the grid of the slot");
+        } else {
+            ok("the view of a pattern follows the source of the context");
+        }
+    }
+
     /* A user pattern is complete: the shared percussion layer is not added
      * to it, and its own percussion lines play. */
     {
@@ -1229,7 +1376,6 @@ static int command_user(void)
 
         fill_user_pattern(&percussion,
                           (uint16_t)(1u << MP7_INSTR_TAMBOURINE),
-                          (uint8_t)MP7_PATTERN_STEPS,
                           MP7_TIMESIG_4_4);
         mp7_set_user_pattern(ctx, 1u, &percussion);
         mp7_select_rhythm(ctx, MP7_BANK_A,
@@ -1253,8 +1399,7 @@ static int command_user(void)
     {
         struct mp7_user_pattern snare;
 
-        fill_user_pattern(&snare, (uint16_t)(1u << MP7_INSTR_SNARE_1),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_3_4);
+        fill_user_pattern(&snare, (uint16_t)(1u << MP7_INSTR_SNARE_1), MP7_TIMESIG_3_4);
         mp7_set_user_pattern(ctx, 2u, &snare);
         mp7_select_rhythm(ctx, MP7_BANK_A,
                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
@@ -1307,8 +1452,7 @@ static int command_user(void)
         struct mp7_user_pattern shuffle;
         struct mp7_user_pattern straight;
 
-        fill_user_pattern(&shuffle, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_2_4);
+        fill_user_pattern(&shuffle, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_2_4);
         mp7_set_user_pattern(ctx, 3u, &shuffle);
         mp7_select_rhythm(ctx, MP7_BANK_A,
                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
@@ -1321,8 +1465,7 @@ static int command_user(void)
             ok("the grid of a user pattern reaches the sequencer");
         }
 
-        fill_user_pattern(&straight, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_4_4);
+        fill_user_pattern(&straight, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_4_4);
         mp7_set_user_pattern(ctx, 4u, &straight);
         mp7_select_rhythm(ctx, MP7_BANK_A,
                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ) |
@@ -1343,8 +1486,7 @@ static int command_user(void)
         mp7_init(ctx, sample_rate);
         mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
 
-        fill_user_pattern(&metered, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_7_4);
+        fill_user_pattern(&metered, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_7_4);
         mp7_set_user_pattern(ctx, 0u, &metered);
         mp7_select_rhythm(ctx, MP7_BANK_A,
                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
@@ -1368,8 +1510,7 @@ static int command_user(void)
         mp7_init(ctx, sample_rate);
         mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
 
-        fill_user_pattern(&fives, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_5_4);
+        fill_user_pattern(&fives, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_5_4T);
         mp7_set_user_pattern(ctx, 0u, &fives);
         mp7_select_rhythm(ctx, MP7_BANK_A,
                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
@@ -1377,8 +1518,7 @@ static int command_user(void)
             fail("a 5/4 pattern is not on the compound grid");
         }
 
-        fill_user_pattern(&sevens, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_7_4);
+        fill_user_pattern(&sevens, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_7_4);
         mp7_set_user_pattern(ctx, 0u, &sevens);
         if (ctx->sequencer.subdivision != (uint8_t)MP7_SUBDIV_STRAIGHT) {
             fail("a 7/4 pattern did not stay on the straight grid");
@@ -1412,20 +1552,17 @@ static int command_user(void)
     /* A reset returns to the preset source but keeps the user slots.
      *
      * The check covers the lowest and the highest slot, the grid as well as
-     * the time signature and the period, and a slot that was emptied with a
-     * null pattern: it must stay empty across the reset. */
+     * the time signature, and a slot that was emptied with a null pattern:
+     * it must stay empty across the reset. */
     {
         struct mp7_user_pattern low;
         struct mp7_user_pattern mid;
         struct mp7_user_pattern high;
         int same;
 
-        fill_user_pattern(&low, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_4_4);
-        fill_user_pattern(&mid, (uint16_t)(1u << MP7_INSTR_SNARE_1),
-                          (uint8_t)MP7_PATTERN_HALF_STEPS, MP7_TIMESIG_7_4);
-        fill_user_pattern(&high, (uint16_t)(1u << MP7_INSTR_HIHAT),
-                          (uint8_t)MP7_PATTERN_STEPS, MP7_TIMESIG_6_8);
+        fill_user_pattern(&low, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_4_4);
+        fill_user_pattern(&mid, (uint16_t)(1u << MP7_INSTR_SNARE_1), MP7_TIMESIG_7_4);
+        fill_user_pattern(&high, (uint16_t)(1u << MP7_INSTR_HIHAT), MP7_TIMESIG_6_8T);
 
         mp7_set_user_pattern(ctx, 0u, &low);
         mp7_set_user_pattern(ctx, 4u, &mid);
@@ -1443,8 +1580,7 @@ static int command_user(void)
         for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
             if (!mp7_get_user_pattern(ctx, 0u, &readback) ||
                 (readback.notes[column] != low.notes[column]) ||
-                (readback.timesig != low.timesig) ||
-                (readback.notes_period != low.notes_period)) {
+                (readback.timesig != low.timesig)) {
                 same = 0;
             }
         }
@@ -1457,8 +1593,7 @@ static int command_user(void)
         for (column = 0u; same && (column < MP7_USER_PATTERN_COLUMNS); column++) {
             if (!mp7_get_user_pattern(ctx, 4u, &readback) ||
                 (readback.notes[column] != mid.notes[column]) ||
-                (readback.timesig != mid.timesig) ||
-                (readback.notes_period != mid.notes_period)) {
+                (readback.timesig != mid.timesig)) {
                 same = 0;
             }
         }
@@ -1472,8 +1607,7 @@ static int command_user(void)
             if (!mp7_get_user_pattern(ctx, MP7_USER_PATTERN_COUNT - 1u,
                                      &readback) ||
                 (readback.notes[column] != high.notes[column]) ||
-                (readback.timesig != high.timesig) ||
-                (readback.notes_period != high.notes_period)) {
+                (readback.timesig != high.timesig)) {
                 same = 0;
             }
         }
@@ -1500,8 +1634,7 @@ static int command_user(void)
         size_t i;
 
         mp7_init(ctx, sample_rate);
-        fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_4_4);
+        fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_4_4);
         mp7_set_user_pattern(ctx, 0u, &pattern);
         mp7_select_rhythm(ctx, MP7_BANK_A,
                           mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
@@ -1527,14 +1660,12 @@ static int command_user(void)
         struct mp7_user_pattern changed;
 
         mp7_init(ctx, sample_rate);
-        fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS),
-                          (uint8_t)MP7_PATTERN_HALF_STEPS, MP7_TIMESIG_4_4);
+        fill_user_pattern(&pattern, (uint16_t)(1u << MP7_INSTR_BASS), MP7_TIMESIG_4_4);
         mp7_set_user_pattern(ctx, 0u, &pattern);
         mp7_select_rhythm(ctx, MP7_BANK_A, mp7_rhythm_button_bit(MP7_RHYTHM_WALTZ));
         mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);
 
-        fill_user_pattern(&changed, (uint16_t)(1u << MP7_INSTR_SNARE_2),
-                          (uint8_t)MP7_PATTERN_HALF_STEPS, MP7_TIMESIG_4_4);
+        fill_user_pattern(&changed, (uint16_t)(1u << MP7_INSTR_SNARE_2), MP7_TIMESIG_4_4);
         mp7_set_user_pattern(ctx, 0u, &changed);
         if (!user_grid_matches(&ctx->sequencer, &changed)) {
             fail("a playing user pattern did not change with the pattern");
@@ -1554,7 +1685,6 @@ static int command_user(void)
         mp7_init(ctx, sample_rate);
         memset(&accented, 0, sizeof(accented));
         accented.timesig = MP7_TIMESIG_4_4;
-        accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
         accented.notes[0] = (uint16_t)(1u << MP7_INSTR_BASS);
         accented.notes[1] = (uint16_t)((1u << MP7_INSTR_BASS) |
                                        MP7_PATTERN_ACCENT);
@@ -1597,7 +1727,6 @@ static int command_user(void)
         mp7_init(ctx, sample_rate);
         memset(&accented, 0, sizeof(accented));
         accented.timesig = MP7_TIMESIG_4_4;
-        accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
         accented.notes[0] = (uint16_t)(1u << MP7_INSTR_GUIRO);
         accented.notes[1] = (uint16_t)((1u << MP7_INSTR_GUIRO) |
                                        MP7_PATTERN_ACCENT);
@@ -1640,7 +1769,6 @@ static int command_user(void)
         mp7_init(live, sample_rate);
         memset(&accented, 0, sizeof(accented));
         accented.timesig = MP7_TIMESIG_4_4;
-        accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
         accented.notes[0] = (uint16_t)((1u << MP7_INSTR_BASS) |
                                        MP7_PATTERN_ACCENT);
 
@@ -1737,7 +1865,6 @@ static int command_user(void)
 
             memset(&accented, 0, sizeof(accented));
             accented.timesig = MP7_TIMESIG_4_4;
-            accented.notes_period = (uint8_t)MP7_PATTERN_STEPS;
             accented.notes[0] = (uint16_t)((1u << MP7_INSTR_BASS) |
                                             MP7_PATTERN_ACCENT);
             accented.notes[1] = (uint16_t)((1u << MP7_INSTR_BASS) |
@@ -2759,8 +2886,9 @@ static int command_api(void)
     }
 
     /* Factory-pattern access. The view always carries the whole 64-column
-     * grid, with the repetitions of a shorter stored period applied, so the
-     * consumer never has to know the stored period. */
+     * grid, with the repetitions of a shorter stored period applied and the
+     * shared percussion layer merged into it, so the consumer never has to
+     * know the stored period. */
     {
         struct mp7_pattern_view view;
         int bad = 0;
@@ -2768,15 +2896,26 @@ static int command_api(void)
         for (i = 0u; i < (unsigned int)MP7_RHYTHM_COUNT; i++) {
             unsigned int column;
 
-            mp7_get_factory_pattern((mp7_rhythm)i, &view);
+            mp7_get_selection_pattern(ctx, mp7_rhythm_bank((mp7_rhythm)i),
+                                       mp7_rhythm_button_bit((mp7_rhythm)i),
+                                       &view);
             if (view.enable != mp7_factory_rhythms[i].enable) {
                 bad = 1;
                 break;
             }
+            if (view.compound !=
+                mp7_mask_is_compound(mp7_factory_rhythms[i].enable)) {
+                bad = 1;
+                break;
+            }
+            if (view.timesig != mp7_factory_rhythms[i].timesig) {
+                bad = 1;
+                break;
+            }
             for (column = 0u; column < MP7_PATTERN_COLUMNS; column++) {
-                if ((view.notes[column] !=
-                     pattern_note(&mp7_factory_rhythms[i], column)) ||
-                    (view.percussion[column] != percussion_note(column))) {
+                if (view.notes[column] !=
+                    (pattern_note(&mp7_factory_rhythms[i], column) |
+                     percussion_note(column))) {
                     bad = 1;
                     break;
                 }
@@ -2786,20 +2925,29 @@ static int command_api(void)
             }
         }
 
-        mp7_get_factory_pattern((mp7_rhythm)MP7_RHYTHM_COUNT, &view);
-        for (i = 0u; i < MP7_PATTERN_COLUMNS; i++) {
-            if ((view.notes[i] != 0) || (view.percussion[i] != 0)) {
+        /* A selection of every rhythm of a bank is a selection like any
+         * other: the notes of all of them, and the mask they have in
+         * common. */
+        {
+            uint64_t expect_enable = ~(uint64_t)0;
+            unsigned int rhythm;
+
+            for (rhythm = 0u; rhythm < 10u; rhythm++) {
+                expect_enable &= mp7_factory_rhythms[rhythm].enable;
+            }
+            mp7_get_selection_pattern(ctx, MP7_BANK_A, 0x03FFu, &view);
+            if (view.enable != expect_enable) {
+                bad = 1;
+            }
+            if (view.timesig != MP7_TIMESIG_NONE) {
                 bad = 1;
             }
         }
-        if (view.enable != 0) {
-            bad = 1;
-        }
 
         if (bad) {
-            fail("mp7_get_factory_pattern() returned the wrong data");
+            fail("the view of a rhythm returned the wrong data");
         } else {
-            ok("mp7_get_factory_pattern() returns the factory data");
+            ok("the view of a selection is the view of a rhythm");
         }
     }
 
@@ -2808,12 +2956,12 @@ static int command_api(void)
     if ((mp7_timesig_enable_mask(MP7_TIMESIG_4_4) != ~(uint64_t)0) ||
         (mp7_timesig_enable_mask(MP7_TIMESIG_3_4) !=
          UINT64_C(0xFF0F0FFFFF0F0FFF)) ||
-        (mp7_timesig_enable_mask(MP7_TIMESIG_5_4) !=
+        (mp7_timesig_enable_mask(MP7_TIMESIG_5_4T) !=
          UINT64_C(0x0F0F3F3F0F0F3F3F)) ||
         (mp7_timesig_enable_mask(MP7_TIMESIG_7_4) !=
          UINT64_C(0x00FFFFFFFFFFFFFF)) ||
         (mp7_timesig_enable_mask(MP7_TIMESIG_2_4) != MP7_PATTERN_COMPOUND_MASK) ||
-        (mp7_timesig_enable_mask(MP7_TIMESIG_6_8) != MP7_PATTERN_COMPOUND_MASK) ||
+        (mp7_timesig_enable_mask(MP7_TIMESIG_6_8T) != MP7_PATTERN_COMPOUND_MASK) ||
         (mp7_timesig_enable_mask((mp7_timesig)MP7_TIMESIG_COUNT) != 0u)) {
         fail("the time signature masks are wrong");
     } else {
@@ -2823,8 +2971,8 @@ static int command_api(void)
     /* The grid of a signature follows its mask: the 2/4, the 5/4 and the 6/8
      * play compound, the others play straight. */
     if ((mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_2_4)) != 1u) ||
-        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_6_8)) != 1u) ||
-        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_5_4)) != 1u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_6_8T)) != 1u) ||
+        (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_5_4T)) != 1u) ||
         (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_3_4)) != 0u) ||
         (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_4_4)) != 0u) ||
         (mp7_mask_is_compound(mp7_timesig_enable_mask(MP7_TIMESIG_7_4)) != 0u)) {

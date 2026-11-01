@@ -138,7 +138,6 @@ for (unsigned int column = 0; column < 64; column++) {
         : 0;
 }
 pattern.timesig = MP7_TIMESIG_4_4;  /* the metric of the grid */
-pattern.notes_period = 64;          /* the grid does not repeat earlier */
 
 mp7_set_user_pattern(ctx, 0, &pattern);  /* slot 0 = bank A, button 0 */
 mp7_set_pattern_source(ctx, MP7_PATTERN_SOURCE_USER);

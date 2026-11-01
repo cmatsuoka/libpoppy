@@ -508,25 +508,25 @@ static const uint16_t mp7_pattern_latinswing_notes[MP7_PATTERN_HALF_STEPS] = {
 };
 
 const struct mp7_factory_rhythm mp7_factory_rhythms[MP7_RHYTHM_COUNT] = {
-    { mp7_pattern_waltz_notes, MP7_ENABLE_3_4, 32 }, /* Waltz */
-    { mp7_pattern_samba_notes, MP7_ENABLE_4_4, 64 }, /* Samba */
-    { mp7_pattern_mambo_notes, MP7_ENABLE_4_4, 32 }, /* Mambo */
-    { mp7_pattern_rumba_notes, MP7_ENABLE_4_4, 64 }, /* Rumba */
-    { mp7_pattern_tango_notes, MP7_ENABLE_4_4, 32 }, /* Tango */
-    { mp7_pattern_bossanova_notes, MP7_ENABLE_4_4, 64 }, /* Bossanova */
-    { mp7_pattern_rock1_notes, MP7_ENABLE_4_4, 32 }, /* Rock 1 */
-    { mp7_pattern_rock3_notes, MP7_ENABLE_4_4, 32 }, /* Rock 3 */
-    { mp7_pattern_march24_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS }, /* March 2/4 */
-    { mp7_pattern_swing_notes, MP7_ENABLE_4_4, 32 }, /* Swing */
-    { mp7_pattern_jazzwaltz_notes, MP7_ENABLE_3_4, 32 }, /* Jazz Waltz */
-    { mp7_pattern_meringue_notes, MP7_ENABLE_4_4, 64 }, /* Meringue */
-    { mp7_pattern_chacha_notes, MP7_ENABLE_4_4, 64 }, /* Cha-Cha */
-    { mp7_pattern_beguine_notes, MP7_ENABLE_4_4, 32 }, /* Beguine */
-    { mp7_pattern_habanera_notes, MP7_ENABLE_4_4, 32 }, /* Habanera */
-    { mp7_pattern_slowrock_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS }, /* Slow Rock */
-    { mp7_pattern_rock2_notes, MP7_ENABLE_4_4, 32 }, /* Rock 2 */
-    { mp7_pattern_rock4_notes, MP7_ENABLE_4_4, 32 }, /* Rock 4 */
-    { mp7_pattern_march68_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS }, /* March 6/8 */
-    { mp7_pattern_latinswing_notes, MP7_ENABLE_4_4, 32 }, /* Latin Swing */
+    { mp7_pattern_waltz_notes, MP7_ENABLE_3_4, 32, MP7_TIMESIG_3_4 }, /* Waltz */
+    { mp7_pattern_samba_notes, MP7_ENABLE_4_4, 64, MP7_TIMESIG_4_4 }, /* Samba */
+    { mp7_pattern_mambo_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Mambo */
+    { mp7_pattern_rumba_notes, MP7_ENABLE_4_4, 64, MP7_TIMESIG_4_4 }, /* Rumba */
+    { mp7_pattern_tango_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Tango */
+    { mp7_pattern_bossanova_notes, MP7_ENABLE_4_4, 64, MP7_TIMESIG_4_4 }, /* Bossanova */
+    { mp7_pattern_rock1_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Rock 1 */
+    { mp7_pattern_rock3_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Rock 3 */
+    { mp7_pattern_march24_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_2_4 }, /* March 2/4 */
+    { mp7_pattern_swing_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Swing */
+    { mp7_pattern_jazzwaltz_notes, MP7_ENABLE_3_4, 32, MP7_TIMESIG_3_4 }, /* Jazz Waltz */
+    { mp7_pattern_meringue_notes, MP7_ENABLE_4_4, 64, MP7_TIMESIG_4_4 }, /* Meringue */
+    { mp7_pattern_chacha_notes, MP7_ENABLE_4_4, 64, MP7_TIMESIG_4_4 }, /* Cha-Cha */
+    { mp7_pattern_beguine_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Beguine */
+    { mp7_pattern_habanera_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Habanera */
+    { mp7_pattern_slowrock_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_2_4 }, /* Slow Rock */
+    { mp7_pattern_rock2_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Rock 2 */
+    { mp7_pattern_rock4_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Rock 4 */
+    { mp7_pattern_march68_notes, MP7_ENABLE_2_4, MP7_PATTERN_QUARTER_STEPS, MP7_TIMESIG_6_8T }, /* March 6/8 */
+    { mp7_pattern_latinswing_notes, MP7_ENABLE_4_4, 32, MP7_TIMESIG_4_4 }, /* Latin Swing */
 };
 

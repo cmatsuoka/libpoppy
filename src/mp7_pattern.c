@@ -50,11 +50,8 @@
 
 /* Both the rhythm grids and the shared percussion layer may store only a
  * shorter period (16 or 32 columns) that repeats to fill the 64-column
- * cycle. The period is always a power of two, so masking wraps the column. */
-static unsigned int wrap_column(unsigned int column, unsigned int period)
-{
-    return column & (period - 1u);
-}
+ * cycle. The period is always a power of two, so masking wraps the column.
+ * The helper is in mp7_internal.h, because the pattern views need it too. */
 
 static uint32_t steps_per_beat(const struct mp7_sequencer *seq)
 {
@@ -181,139 +178,148 @@ void mp7_pattern_set_tempo(struct mp7_context_s *ctx, uint32_t bpm)
     }
 }
 
-/* With no rhythm key pressed the three Additional Volume voices keep running
- * on their fixed layer; the main rhythm instruments are silent. That layer is
- * the shared percussion definition, and it plays on its own, straight, over
- * all 64 columns. */
-static void build_default_percussion(struct mp7_sequencer *seq)
+/* The composition of a selection: the grid the sequencer plays and the card
+ * prints.
+ *
+ * It is a pure function of the selection and of the source, so a host can
+ * ask for the selection that is queued as well. The rules are the ones of
+ * the hardware: the notes of the patterns that are combined are OR-ed
+ * together, their masks are AND-ed, and the shared Tambourine/Guiro/Quijada
+ * layer plays with every factory rhythm.
+ *
+ * A user pattern is a complete pattern: it carries its own percussion lines,
+ * so the shared layer is not added to it. An empty slot plays nothing and
+ * disables no column, so it is skipped instead of being folded into the
+ * composition.
+ *
+ * The grid a selection plays on follows the masks of the patterns in it, not
+ * the combined mask: the combined mask of a compound and a straight pattern
+ * is neither of the two.
+ *
+ * The signature of the selection is the signature its patterns carry, and
+ * MP7_TIMESIG_NONE when they do not all carry the same one. It is not the
+ * signature of the combined mask: a 4/4 and a 3/4 pattern combined are a
+ * mixed selection, although their combined mask is the one of the 3/4. */
+void mp7_pattern_compose(struct mp7_context_s *ctx, uint32_t selected,
+                         struct mp7_pattern_view *out)
 {
     unsigned int column;
-
-    for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        seq->notes[column] = mp7_shared_percussion_notes[
-            wrap_column(column, MP7_PATTERN_HALF_STEPS)];
-    }
-    seq->enable = ~(uint64_t)0;
-    seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
-}
-
-#ifdef LIBPOPPY_EXTRA
-/* Combine the user-defined patterns.
- *
- * A user pattern is a complete pattern: it carries its own percussion
- * lines, so the shared Tambourine/Guiro/Quijada layer is not added to it.
- * With no button pressed the transport keeps running and stays silent.
- *
- * An empty slot plays nothing and disables no column, so it is skipped
- * instead of being folded into the combination. */
-static void combine_user_patterns(struct mp7_context_s *ctx, uint32_t selected)
-{
-    struct mp7_sequencer *seq = &ctx->sequencer;
-    uint64_t enable = ~(uint64_t)0;
-    uint8_t subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
     unsigned int index;
-    unsigned int column;
+    int have_signature = 0;
+    int mixed = 0;
+    mp7_timesig signature = MP7_TIMESIG_NONE;
 
-    if (selected == 0u) {
-        if (seq->running != 0u) {
-            seq->enable = ~(uint64_t)0;
-            seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
-        } else {
-            seq->enable = 0u;
-            seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
-        }
-        return;
-    }
+    memset(out, 0, sizeof(*out));
+    out->enable = ~(uint64_t)0;
 
-    for (index = 0u; index < (unsigned int)MP7_RHYTHM_COUNT; index++) {
-        const struct mp7_user_slot *slot;
-        uint64_t mask;
-
-        if ((selected & ((uint32_t)1u << index)) == 0u) {
-            continue;
-        }
-
-        slot = &ctx->user_patterns[index];
-        if (slot->used == 0u) {
-            continue;
-        }
-
-        for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            seq->notes[column] |= slot->notes[
-                wrap_column(column, slot->notes_period)];
-        }
-
-        /* The mask comes from the time signature of the slot, so it is one
-         * of the six the library knows. */
-        mask = mp7_timesig_enable_mask((mp7_timesig)slot->timesig);
-        enable &= mask;
-        subdivision |= mp7_mask_is_compound(mask);
-    }
-
-    seq->enable = enable;
-    seq->subdivision = subdivision;
-}
-#endif /* LIBPOPPY_EXTRA */
-
-void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
-{
-    struct mp7_sequencer *seq = &ctx->sequencer;
-    uint32_t selected = selected_mask & ((1u << MP7_RHYTHM_COUNT) - 1u);
-    uint64_t enable = ~(uint64_t)0;
-    uint8_t subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
-    unsigned int rhythm;
-    unsigned int column;
-
-    seq->selected = selected;
-    memset(seq->notes, 0, sizeof(seq->notes));
+#ifndef LIBPOPPY_EXTRA
+    /* The preset-only build has no user slots, so the composition does not
+     * need the context. */
+    (void)ctx;
+#endif
 
 #ifdef LIBPOPPY_EXTRA
     /* The user slots are a complete set of patterns of their own, so the
      * selection is read against them instead of the factory rhythms. */
-    if (seq->source == MP7_SOURCE_USER) {
-        combine_user_patterns(ctx, selected);
-        return;
-    }
-#endif
+    if (ctx->sequencer.source == MP7_SOURCE_USER) {
+        for (index = 0u; index < (unsigned int)MP7_RHYTHM_COUNT; index++) {
+            const struct mp7_user_slot *slot;
+            uint64_t mask;
 
-    if (selected == 0u) {
-        if (seq->running != 0u) {
-            build_default_percussion(seq);
-        } else {
-            seq->enable = 0u;
-            seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
+            if ((selected & ((uint32_t)1u << index)) == 0u) {
+                continue;
+            }
+
+            slot = &ctx->user_patterns[index];
+            if (slot->used == 0u) {
+                continue;
+            }
+
+            for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
+                out->notes[column] |= slot->notes[column];
+            }
+
+            /* The mask comes from the time signature of the slot, so it is
+             * one of the six the library knows. */
+            mask = mp7_timesig_enable_mask((mp7_timesig)slot->timesig);
+            out->enable &= mask;
+            out->compound |= mp7_mask_is_compound(mask);
+
+            if (!have_signature) {
+                signature = (mp7_timesig)slot->timesig;
+                have_signature = 1;
+            } else if ((mp7_timesig)slot->timesig != signature) {
+                mixed = 1;
+            }
         }
+
+        /* With no button pressed the user source keeps the transport running
+         * and stays silent: the shared percussion layer belongs to the
+         * factory rhythms. */
+        out->timesig = mixed ? MP7_TIMESIG_NONE
+                              : (have_signature ? signature : MP7_TIMESIG_4_4);
         return;
     }
+#endif /* LIBPOPPY_EXTRA */
 
-    for (rhythm = 0u; rhythm < (unsigned int)MP7_RHYTHM_COUNT; rhythm++) {
+    for (index = 0u; index < (unsigned int)MP7_RHYTHM_COUNT; index++) {
         const struct mp7_factory_rhythm *pattern;
+        mp7_timesig pattern_signature;
 
-        if ((selected & ((uint32_t)1u << rhythm)) == 0u) {
+        if ((selected & ((uint32_t)1u << index)) == 0u) {
             continue;
         }
-        pattern = &mp7_factory_rhythms[rhythm];
+        pattern = &mp7_factory_rhythms[index];
 
         for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-            seq->notes[column] |= pattern->notes[
+            out->notes[column] |= pattern->notes[
                 wrap_column(column, pattern->notes_period)];
         }
-        enable &= pattern->enable;
+        out->enable &= pattern->enable;
+        out->compound |= mp7_mask_is_compound(pattern->enable);
 
-        /* The grid a pattern plays on follows its own mask, not the
-         * combined one: the combined mask of a compound and a straight
-         * pattern is neither of the two. */
-        subdivision |= mp7_mask_is_compound(pattern->enable);
+        pattern_signature = pattern->timesig;
+        if (!have_signature) {
+            signature = pattern_signature;
+            have_signature = 1;
+        } else if (pattern_signature != signature) {
+            mixed = 1;
+        }
     }
 
-    /* The shared Tambourine/Guiro/Quijada layer plays with every rhythm. */
+    /* The shared Tambourine/Guiro/Quijada layer plays with every rhythm, and
+     * it is what plays on its own when no rhythm button is pressed. */
     for (column = 0u; column < MP7_PATTERN_STEPS; column++) {
-        seq->notes[column] |= mp7_shared_percussion_notes[
+        out->notes[column] |= mp7_shared_percussion_notes[
             wrap_column(column, MP7_PATTERN_HALF_STEPS)];
     }
 
-    seq->enable = enable;
-    seq->subdivision = subdivision;
+    out->timesig = mixed ? MP7_TIMESIG_NONE
+                          : (have_signature ? signature : MP7_TIMESIG_4_4);
+}
+
+void mp7_pattern_combine(struct mp7_context_s *ctx, uint32_t selected_mask)
+{
+    struct mp7_sequencer *seq = &ctx->sequencer;
+    struct mp7_pattern_view view;
+    uint32_t selected = selected_mask & ((1u << MP7_RHYTHM_COUNT) - 1u);
+
+    seq->selected = selected;
+
+    /* The sequencer plays the composition, so the grid it runs on is the
+     * view the host prints. */
+    mp7_pattern_compose(ctx, selected, &view);
+
+    memcpy(seq->notes, view.notes, sizeof(seq->notes));
+    seq->enable = view.enable;
+    seq->subdivision = view.compound ? (uint8_t)MP7_SUBDIV_COMPOUND
+                                      : (uint8_t)MP7_SUBDIV_STRAIGHT;
+
+    /* A stopped transport plays nothing, so the mask is empty. */
+    if ((seq->running == 0u) && (selected == 0u)) {
+        seq->enable = 0u;
+        seq->subdivision = (uint8_t)MP7_SUBDIV_STRAIGHT;
+    }
 }
 
 void mp7_pattern_init(struct mp7_context_s *ctx)

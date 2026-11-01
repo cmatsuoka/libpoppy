@@ -27,7 +27,7 @@ extern "C" {
 /* Library version. major/minor/patch are packed as 0x00MMmmpp.
  * The plain integer constants keep MP7_VERSION_NUMBER usable in #if. */
 #define MP7_VERSION_MAJOR 0
-#define MP7_VERSION_MINOR 2
+#define MP7_VERSION_MINOR 3
 #define MP7_VERSION_PATCH 0
 #define MP7_VERSION_NUMBER \
     ((MP7_VERSION_MAJOR << 16) | (MP7_VERSION_MINOR << 8) | MP7_VERSION_PATCH)
@@ -98,18 +98,27 @@ typedef enum {
  * The grid skips the columns that are not part of the metric. The 2/4 and
  * the 6/8 share one hole pattern, the compound one, so their masks are the
  * same and the name only records the label the rhythm carries on the panel.
- * The 5/4 has a hole pattern of its own but plays on the compound grid as
- * well, so it keeps the triplet feel of its grouped columns and its loop is
- * slower than the same columns on the straight grid.
+ *
+ * The 5/4 and the 6/8 carry a T: they play on the compound grid, where a
+ * beat holds six columns instead of eight, so their grouped columns keep
+ * the triplet feel and their loop is slower than the same columns on the
+ * straight grid. The T says so, and it leaves the plain names free for a
+ * straight 5/4 or 6/8 if the library ever grows one.
  *
  * The zero value is 4/4, so a pattern that is only zeroed is a straight
- * 64-column loop. */
+ * 64-column loop.
+ *
+ * MP7_TIMESIG_NONE is not a signature but the absence of one: it is the
+ * answer of mp7_timesig_of_mask() for a mask that belongs to no signature,
+ * and it is what a pattern view carries when the patterns that are combined
+ * carry different signatures. It is not a valid input anywhere. */
 typedef enum {
+    MP7_TIMESIG_NONE = -1,
     MP7_TIMESIG_4_4 = 0,
     MP7_TIMESIG_2_4 = 1,
     MP7_TIMESIG_3_4 = 2,
-    MP7_TIMESIG_5_4 = 3,
-    MP7_TIMESIG_6_8 = 4,
+    MP7_TIMESIG_5_4T = 3,
+    MP7_TIMESIG_6_8T = 4,
     MP7_TIMESIG_7_4 = 5,
     MP7_TIMESIG_COUNT = 6
 } mp7_timesig;
@@ -118,6 +127,15 @@ typedef enum {
  * column, and a disabled column takes no time.
  */
 uint64_t mp7_timesig_enable_mask(mp7_timesig timesig);
+
+/* The signature a mask belongs to, or MP7_TIMESIG_NONE when it belongs to
+ * none of them. The masks of the signatures are the only masks the library
+ * hands out, so a mask that is not one of them names no signature. It is
+ * the inverse of mp7_timesig_enable_mask(), except that the compound mask
+ * is the mask of the 2/4 and of the 6/8 alike: it names the 2/4. A pattern
+ * that carries the compound mask keeps the name of its own meter, so the
+ * signature of a pattern comes from the pattern and not from its mask. */
+mp7_timesig mp7_timesig_of_mask(uint64_t mask);
 
 /* Schedule flags for mp7_select_rhythm(), OR-ed into the button mask.
  * MP7_APPLY_NOW is zero, so the immediate case needs no flag. */
@@ -132,34 +150,44 @@ typedef void *mp7_context;
  * it with the header's MP7_VERSION_NUMBER to detect a mismatched build. */
 uint32_t mp7_version_number(void);
 
-/* The number of columns in a pattern grid. Every grid is this long: the
- * library stores a grid in the shortest period that repeats to fill the
- * cycle, but a consumer always sees the whole cycle. */
+/* The number of columns in a pattern grid. Every grid is this long; a
+ * consumer always sees the whole cycle. */
 #define MP7_PATTERN_COLUMNS 64u
 
-/* A view of one factory rhythm: its whole 64-column grid.
+/* A view of a pattern: the complete grid of the cycle, ready to print and
+ * to play.
  *
- * `notes` is the rhythm's own grid, 64 columns of 16-bit instrument masks:
- * bit n is set when instrument n (in mp7_instr order) plays in that column,
- * so bit 0 is the Bass Drum. It holds the rhythm's own twelve instruments,
- * bits 0..11.
+ * The same struct carries the view of one rhythm and the view of a whole
+ * selection of rhythms, so a host needs one kind of object for the pattern
+ * card and one call to fill it.
  *
- * `percussion` is the shared Tambourine/Guiro/Quijada layer, 64 columns of
- * the same kind of mask, with bits 12..14 (Tambourine 12, Guiro 13, Quijada
- * 14). It is the same layer for every rhythm, and it is the layer that plays
- * on its own when no rhythm button is pressed. The complete pattern column c
- * is `notes[c] | percussion[c]`.
+ * `notes` is the grid, 64 columns of 16-bit instrument masks: bit n is set
+ * when instrument n (in mp7_instr order) plays in that column, so bit 0 is
+ * the Bass Drum. It holds every voice of the pattern, the rhythm's own
+ * instruments and the shared Tambourine/Guiro/Quijada layer (bits 12..14)
+ * already merged into it. Bit 15 is the accent flag of a user-pattern
+ * column; it is clear for the factory rhythms.
  *
  * `enable` is a 64-bit mask, one bit per column; disabled columns take no
- * time. It is one of the masks of the time signatures, and
- * mp7_timesig_enable_mask() returns the mask of each of them. The mask also
- * decides the grid the rhythm plays on: the compound mask and the 5/4 mask
- * play compound, every other mask plays straight.
+ * time. It is the mask of the pattern that is played, which for a selection
+ * of rhythms is the AND of the masks of the rhythms in it.
+ *
+ * `compound` says the pattern plays on the compound grid, where a beat holds
+ * six columns instead of eight. The grid follows the masks of the patterns
+ * that are combined, not the combined mask: a selection of a 5/4 and a 4/4
+ * pattern plays compound, although its combined mask is the one of the 5/4.
+ *
+ * `timesig` is the signature of the pattern, or MP7_TIMESIG_NONE when the
+ * patterns that are combined carry different signatures. It is the meter of
+ * the selection, and it is not the signature of the combined mask: a 4/4 and
+ * a 3/4 pattern combined are a mixed selection, although their combined
+ * mask is the one of the 3/4.
  */
 struct mp7_pattern_view {
     uint16_t notes[MP7_PATTERN_COLUMNS];
-    uint16_t percussion[MP7_PATTERN_COLUMNS];
     uint64_t enable;
+    uint8_t compound;
+    mp7_timesig timesig;
 };
 
 /* Allocate and initialize a context. A sample_rate of 0 selects
@@ -332,10 +360,27 @@ void mp7_set_balance(mp7_context ctx, int32_t balance_q16);
 void mp7_set_instr_gain(mp7_context ctx, mp7_instr instr, int32_t gain_q16);
 void mp7_set_instr_pan(mp7_context ctx, mp7_instr instr, int32_t pan_q16);
 
-/* Copy a view of one factory rhythm into `out`. The view carries the whole
- * 64-column grid, with the repetitions of a shorter stored period applied.
- * Out-of-range input yields a zeroed grid and a zeroed mask. */
-void mp7_get_factory_pattern(mp7_rhythm rhythm, struct mp7_pattern_view *out);
+/* Copy a view of a selection of patterns into `out`.
+ *
+ * `buttons` is the ten-button mask of `bank`, the same mask
+ * mp7_select_rhythm() takes; MP7_APPLY_NEXT_CYCLE in it is ignored, so the
+ * running selection and the queued one can be asked for the same way. The
+ * patterns that are combined are the factory rhythms, or the user slots
+ * when the context points at the user source.
+ *
+ * The view is the composition the sequencer plays: the notes of the patterns
+ * are OR-ed together, their masks are AND-ed, and the shared percussion
+ * layer is merged into the factory rhythms. It does not touch the sequencer,
+ * so it can be asked for a selection that is not playing.
+ *
+ * A selection of one pattern is the view of that pattern: a host that shows
+ * a single rhythm asks for the one button of that rhythm, which
+ * mp7_rhythm_bank() and mp7_rhythm_button_bit() hand out. With no button
+ * pressed the view is the fixed percussion layer of the preset source, and
+ * an empty grid in the user source.
+ */
+void mp7_get_selection_pattern(mp7_context ctx, mp7_bank bank, uint16_t buttons,
+                               struct mp7_pattern_view *out);
 
 /* Map a factory rhythm to the bank and button bit that select it on the
  * panel. These helpers let a name/list based interface build a bank/button
@@ -393,17 +438,17 @@ typedef enum {
  * (shuffle) grid, every other signature plays straight. An unknown signature
  * is rejected.
  *
- * `notes_period` is the length of the repeating part of the grid: 16, 32
- * or 64 columns. Column c of the pattern is `notes[c & (notes_period - 1)]`
- * and the columns from notes_period on are ignored. Any other value is
- * stored as a full 64-column grid.
+ * The grid is always the whole cycle: a pattern is 64 columns long, and
+ * what is shorter than a bar is masked out by the mask of the signature,
+ * which the library derives. There is no period to say how long the
+ * repeating part of the grid is: a groove that repeats every sixteen
+ * columns is written sixteen times.
  *
- * Every member of the struct is an input: the grid, the metric and the
- * period are what the host writes, and the library derives the rest. */
+ * Every member of the struct is an input: the grid and the metric are what
+ * the host writes, and the library derives the rest. */
 struct mp7_user_pattern {
     uint16_t notes[MP7_USER_PATTERN_COLUMNS];
     mp7_timesig timesig;
-    uint8_t notes_period;
 };
 
 /* Copy a pattern into one of the user slots.
@@ -431,7 +476,7 @@ bool mp7_set_user_pattern(mp7_context ctx,
  * Returns false when `ctx` is null, `index` is out of range, `out` is null
  * or the slot is empty; an empty or invalid slot yields a zeroed pattern.
  * The copy is the pattern as it was stored, so a set/get round trip returns
- * the same grid, time signature and period. */
+ * the same grid and time signature. */
 bool mp7_get_user_pattern(const void *ctx,
                            unsigned int index,
                            struct mp7_user_pattern *out);
