@@ -2457,6 +2457,49 @@ static int command_mixer(void)
         }
     }
 
+    /* The per-instrument gain runs from 0 to 2: 1.0 is the instrument's
+     * reference level, 2.0 is twice it and 0.5 is half of it. */
+    {
+        int peak_unity;
+        int peak_double;
+        int peak_half;
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_volume(&ctx->mixer, POPPY_Q16_ONE / 4);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_CLAVES]);
+        mp7_process(ctx, stereo, frames);
+        peak_unity = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_volume(&ctx->mixer, POPPY_Q16_ONE / 4);
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_CLAVES,
+                                   2 * POPPY_Q16_ONE);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_CLAVES]);
+        mp7_process(ctx, stereo, frames);
+        peak_double = channel_peak(stereo, frames, 0u);
+
+        mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
+        poppy_mixer_set_volume(&ctx->mixer, POPPY_Q16_ONE / 4);
+        poppy_mixer_set_instr_gain(&ctx->mixer, MP7_INSTR_CLAVES,
+                                   POPPY_Q16_ONE / 2);
+        mp7_voice_trigger(&ctx->voices[MP7_INSTR_CLAVES]);
+        mp7_process(ctx, stereo, frames);
+        peak_half = channel_peak(stereo, frames, 0u);
+
+        if ((peak_unity == 0) ||
+            ((2 * peak_double) < (3 * peak_unity)) ||
+            ((2 * peak_double) > (5 * peak_unity))) {
+            printf("FAIL: a gain of 2.0 does not double the voice\n");
+            failures++;
+        } else if ((2 * peak_half) < (3 * peak_unity / 4) ||
+                   (2 * peak_half) > (5 * peak_unity / 4)) {
+            printf("FAIL: a gain of 0.5 does not halve the voice\n");
+            failures++;
+        } else {
+            ok("the instrument gain spans 0..2 around the reference level");
+        }
+    }
+
     /* Muting an active voice must not freeze it: unmuting mid-hit has to
      * sound the same as if the voice had never been muted. */
     {
@@ -2516,8 +2559,8 @@ static int command_mixer(void)
     }
 
     /* The Cowbell and the two Bongos carry a fixed half Level. Their signal
-     * is half as loud, and the per-instrument gain keeps its whole 0..1 range
-     * on top of the halved signal: its top is the halved signal, not more. */
+     * is half as loud, and the per-instrument gain keeps its whole 0..2 range
+     * on top of the halved signal: its top is twice the halved signal. */
     {
         static const mp7_instr trimmed[3] = {
             MP7_INSTR_COWBELL, MP7_INSTR_SMALL_BONGO, MP7_INSTR_LARGE_BONGO
@@ -2571,7 +2614,7 @@ static int command_mixer(void)
     }
 
     /* The trim is on the voice, not on the gain: the per-instrument gain
-     * still scales the trimmed signal over its whole 0..1 range. */
+     * still scales the trimmed signal over its whole 0..2 range. */
     {
         static const mp7_instr trimmed[3] = {
             MP7_INSTR_COWBELL, MP7_INSTR_SMALL_BONGO, MP7_INSTR_LARGE_BONGO
@@ -3140,8 +3183,12 @@ static int command_api(void)
 
     mp7_init(ctx, MP7_DEFAULT_SAMPLE_RATE);
     mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 100000);
-    if (ctx->mixer.instr_gain_q16[MP7_INSTR_QUIJADA] != POPPY_Q16_ONE) {
-        fail("mp7_set_instr_gain() does not clamp Quijada to 1.0");
+    if (ctx->mixer.instr_gain_q16[MP7_INSTR_QUIJADA] != 100000) {
+        fail("mp7_set_instr_gain() does not keep a gain below 2.0");
+    }
+    mp7_set_instr_gain(ctx, MP7_INSTR_QUIJADA, 3 * POPPY_Q16_ONE);
+    if (ctx->mixer.instr_gain_q16[MP7_INSTR_QUIJADA] != 2 * POPPY_Q16_ONE) {
+        fail("mp7_set_instr_gain() does not clamp Quijada to 2.0");
     }
     mp7_set_instr_gain(ctx, MP7_INSTR_GUIRO, -1);
     if (ctx->mixer.instr_gain_q16[MP7_INSTR_GUIRO] != 0) {

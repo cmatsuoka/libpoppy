@@ -292,16 +292,17 @@ enum mp7_engine {
 };
 
 /* Global mix controls. The master volume is the panel value (0..4); the mixer
- * applies the 0.5 factor itself. The instrument gains apply to every voice;
- * Tambourine, Guiro and Quijada default to 0.5 (their panel Additional Volume
- * faders) and the remaining instruments default to 1.0. The instrument pans
- * default to center and are the source of the per-voice pan positions. */
+ * applies the 0.5 factor itself. The instrument gains apply to every voice and
+ * run from 0 (silence) to 2 (twice the reference level); Tambourine, Guiro and
+ * Quijada default to 0.5 (their panel Additional Volume faders) and the
+ * remaining instruments default to 1.0. The instrument pans default to center
+ * and are the source of the per-voice pan positions. */
 struct poppy_mixer {
     int32_t panel_volume_q16; /* the panel Volume, 0..4; the mixer applies 0.5x */
     int32_t balance_q16;
     int32_t balance_a_gain_q16; /* cached, recomputed on a Balance change */
     int32_t balance_b_gain_q16;
-    int32_t instr_gain_q16[MP7_INSTR_COUNT];
+    int32_t instr_gain_q16[MP7_INSTR_COUNT]; /* 0..2, 1.0 = the reference level */
     int32_t instr_pan_q16[MP7_INSTR_COUNT]; /* 0 = hard left, 65536 = hard right */
 };
 

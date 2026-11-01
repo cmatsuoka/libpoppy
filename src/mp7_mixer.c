@@ -16,6 +16,11 @@
 
 #define POPPY_VOLUME_MAX_Q16 (4 * POPPY_Q16_ONE)
 
+/* The per-instrument gain runs from silence to twice the reference level.
+ * The reference plugin's own per-voice gain is 0..1; the range above unity is
+ * headroom for a host that wants a voice louder than the original unit. */
+#define POPPY_INSTR_GAIN_MAX_Q16 (2 * POPPY_Q16_ONE)
+
 static int32_t balance_gain(int32_t b, unsigned int group)
 {
     const int right = (b >= POPPY_Q16_ONE / 2);
@@ -78,7 +83,8 @@ void poppy_mixer_set_instr_gain(struct poppy_mixer *mixer,
     if (instr >= (unsigned int)MP7_INSTR_COUNT) {
         return;
     }
-    mixer->instr_gain_q16[instr] = poppy_clamp_i32(gain_q16, 0, POPPY_Q16_ONE);
+    mixer->instr_gain_q16[instr] =
+        poppy_clamp_i32(gain_q16, 0, POPPY_INSTR_GAIN_MAX_Q16);
 }
 
 /* The pan of one instrument: 0 is hard left, POPPY_Q16_ONE is hard right and

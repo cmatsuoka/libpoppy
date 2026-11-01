@@ -308,9 +308,18 @@ void mp7_get_panel_state(const void *ctx, struct mp7_panel_state *out);
  * Balance is 0..1 (0..65536), default 0.5; it crossfades the Bass Drum
  * against Hihat/Cymbal 1/Cymbal 2 only.
  *
- * instr_gain is a per-instrument gain: 0..1. Tambourine, Guiro and Quijada
- * default to 0.5, matching their panel Additional Volume faders; every other
- * instrument defaults to 1.0.
+ * instr_gain is a per-instrument gain: 0..2 (0..131072). 0 is silence, 1.0 is
+ * the level the original unit plays the instrument at and 2.0 is twice that
+ * level. For the Tambourine, the Guiro and the Quijada, whose Additional
+ * Volume faders top out at 1.0x, that 1.0 is the top of their fader; for
+ * every other instrument it is the fixed level the panel gives it.
+ *
+ * Tambourine, Guiro and Quijada default to 0.5, the position their panel
+ * Additional Volume faders sit at; every other instrument defaults to 1.0. A
+ * host that never touches the gains gets the library's default mix unchanged.
+ *
+ * The gain is applied per block, so a change takes effect at the next block
+ * boundary.
  *
  * instr_pan is a per-instrument pan position: 0..1 (0..65536), where 0 is
  * hard left, 65536 is hard right and 32768 - the default of every
