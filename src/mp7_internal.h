@@ -178,19 +178,63 @@ struct mp7_user_slot {
  *
  * The noise engine tunes its band-pass to the voice's frequency and its
  * high-pass to the voice's highpass field, so these are the Snare 1
- * band-pass center and the Hihat high-pass cut-off. The voice table
- * below uses the same names, so the table and the defaults cannot
- * drift apart. */
+ * band-pass center, the Snare 2 band-pass center, the Hihat band-pass
+ * center and the Hihat high-pass cut-off. The voice table below uses the
+ * same names, so the table and the defaults cannot drift apart. */
 #define MP7_SNARE1_BANDPASS_HZ 5500u
+#define MP7_SNARE2_BANDPASS_HZ 5500u
+#define MP7_HIHAT_BANDPASS_HZ  10000u
 #define MP7_HIHAT_HIGHPASS_HZ  1000u
 
 #ifdef LIBPOPPY_EXTRA
 
-/* The cut-off ranges the extended build exposes, in Hz. */
-#define MP7_SNARE1_CUTOFF_MIN_HZ 1000u
-#define MP7_SNARE1_CUTOFF_MAX_HZ 15000u
-#define MP7_HIHAT_CUTOFF_MIN_HZ  500u
-#define MP7_HIHAT_CUTOFF_MAX_HZ  15000u
+/* The cut-off range the extended build exposes, in Hz.
+ *
+ * The cut-off is the band-pass center of the instrument, for every
+ * instrument that has one: the Hihat's high-pass is fixed at its factory
+ * value, because moving it above the band-pass only dulls the sound
+ * instead of opening it up. The Hihat's band-pass cannot go below its
+ * fixed high-pass, so its range starts higher than the snares'. */
+#define MP7_CUTOFF_MIN_HZ       1000u
+#define MP7_CUTOFF_MAX_HZ       15000u
+#define MP7_HIHAT_CUTOFF_MIN_HZ 2000u
+
+/* The decay multiplier range, in Q16 units (1.0 is POPPY_Q16_ONE). */
+#define MP7_DECAY_MIN_Q16 (POPPY_Q16_ONE / 4)
+#define MP7_DECAY_MAX_Q16 (4 * POPPY_Q16_ONE)
+
+/* What the extended build exposes for one instrument.
+ *
+ * `has_decay` and `has_cutoff` say which of the two parameters the
+ * instrument has; a call for an instrument that has none is ignored, so
+ * the API can grow without a signature change. `cutoff_min_hz` and
+ * `cutoff_max_hz` are the range of the cut-off, and `cutoff_default_hz`
+ * the value the instrument starts at.
+ *
+ * `slot` is the index of the instrument in the two parameter arrays of
+ * the context. The arrays are as long as the instruments that have the
+ * parameters, not as long as the instrument list, so the state stays
+ * small on a target where it matters.
+ *
+ * The cut-off is always the band-pass center of the instrument's filter.
+ * The Hihat's high-pass stays at its factory value, because moving it
+ * above the band-pass only dulls the sound instead of opening it up. */
+#define MP7_PARAM_SLOT_NONE 0xFFu
+
+struct mp7_instr_param {
+    uint8_t has_decay;
+    uint8_t has_cutoff;
+    uint8_t slot;
+    uint32_t cutoff_min_hz;
+    uint32_t cutoff_max_hz;
+    uint32_t cutoff_default_hz;
+};
+
+/* The number of instruments that carry the synthesis parameters, which is
+ * the length of the two parameter arrays in the context. */
+#define MP7_PARAM_COUNT 3u
+
+extern const struct mp7_instr_param mp7_instr_params[MP7_INSTR_COUNT];
 
 /* The effective cut-off is also limited by the sample rate.
  *
@@ -442,11 +486,14 @@ struct mp7_context_s {
 #ifdef LIBPOPPY_EXTRA
     struct mp7_user_slot user_patterns[MP7_USER_PATTERN_COUNT];
 
-    /* User-modifiable synthesis parameters, reset by mp7_reset(). */
-    int32_t accent_gain_q16;       /* accent column gain multiplier, Q16 */
-    int32_t snare1_decay_q16;      /* Snare 1 decay time multiplier, Q16 */
-    uint32_t snare1_bandpass_hz;   /* Snare 1 band-pass center frequency */
-    uint32_t hihat_highpass_hz;    /* Hihat high-pass cut-off frequency */
+    /* User-modifiable synthesis parameters, reset by mp7_reset().
+     *
+     * The two arrays are indexed by the slot of the instrument in
+     * mp7_instr_params[], so they are as long as the instruments that
+     * carry the parameters and not as long as the instrument list. */
+    int32_t accent_gain_q16;                    /* accent gain multiplier, Q16 */
+    int32_t instr_decay_q16[MP7_PARAM_COUNT];   /* decay multiplier, Q16 */
+    uint32_t instr_cutoff_hz[MP7_PARAM_COUNT];  /* band-pass center, Hz */
 #endif
 };
 
@@ -476,9 +523,11 @@ int32_t mp7_voice_gain_q16(const struct mp7_context_s *ctx,
 void mp7_voice_refresh_gain(struct mp7_context_s *ctx, mp7_instr instr);
 
 #ifdef LIBPOPPY_EXTRA
-void mp7_voice_apply_snare1_decay(struct mp7_context_s *ctx);
-void mp7_voice_apply_snare1_cutoff(struct mp7_context_s *ctx);
-void mp7_voice_apply_hihat_cutoff(struct mp7_context_s *ctx);
+/* Apply the decay multiplier or the cut-off of an instrument to its
+ * voice. Both are no-ops for an instrument that does not have the
+ * parameter. */
+void mp7_voice_apply_decay(struct mp7_context_s *ctx, mp7_instr instr);
+void mp7_voice_apply_cutoff(struct mp7_context_s *ctx, mp7_instr instr);
 #endif /* LIBPOPPY_EXTRA */
 
 int64_t mp7_engine_process(struct mp7_voice *voice);

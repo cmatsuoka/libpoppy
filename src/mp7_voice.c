@@ -27,38 +27,86 @@ struct mp7_voice_config {
     int32_t tick_q16;
 };
 
+/* Short names for the cut-offs the extended build exposes, so the table
+ * below stays in columns. The values themselves live in mp7_internal.h,
+ * so the table and the defaults cannot drift apart. */
+#define SNARE1_BP MP7_SNARE1_BANDPASS_HZ
+#define SNARE2_BP MP7_SNARE2_BANDPASS_HZ
+#define HIHAT_BP  MP7_HIHAT_BANDPASS_HZ
+#define HIHAT_HP  MP7_HIHAT_HIGHPASS_HZ
+
 static const struct mp7_voice_config voice_config[MP7_INSTR_COUNT] = {
     /* Bass */
-    { MP7_ENGINE_SINE_AD,     65u,    0u,    0u,    0u,  1000u, 200000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD  ,       65u,    0u,  0u,       0u,  1000u, 200000u,    0u,    0u,    0u,     0,     0 },
     /* Snare 1 */
-    { MP7_ENGINE_NOISE, MP7_SNARE1_BANDPASS_HZ, 0u, 0u, 800u, 1000u, 400000u, 0u, 0u, 102u, 0, 32768 },
+    { MP7_ENGINE_NOISE    , SNARE1_BP,    0u,  0u,     800u,  1000u, 400000u,    0u,    0u,  102u,     0, 32768 },
     /* Snare 2 */
-    { MP7_ENGINE_NOISE,     5500u,    0u,    0u, 1400u,  1000u,  80000u,     0u,    0u,   77u,     0, 13107 },
+    { MP7_ENGINE_NOISE    , SNARE2_BP,    0u,  0u,    1400u,  1000u,  80000u,    0u,    0u,   77u,     0, 13107 },
     /* Small Bongo */
-    { MP7_ENGINE_SINE_AD,    600u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD  ,      600u,    0u,  0u,       0u,  1000u,  50000u,    0u,    0u,    0u,     0,     0 },
     /* Large Bongo */
-    { MP7_ENGINE_SINE_AD,    400u,    0u,    0u,    0u,  1000u,  50000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD  ,      400u,    0u,  0u,       0u,  1000u,  50000u,    0u,    0u,    0u,     0,     0 },
     /* Conga */
-    { MP7_ENGINE_DUAL_TONE,  195u, 4600u,    0u,    0u,  1000u, 250000u,  4000u,    0u,    0u, 65536,     0 },
+    { MP7_ENGINE_DUAL_TONE,      195u, 4600u,  0u,       0u,  1000u, 250000u, 4000u,    0u,    0u, 65536,     0 },
     /* Cowbell */
-    { MP7_ENGINE_DUAL_TONE,  860u, 4600u,    0u,    0u,  1000u,  50000u,  4000u,    0u,    0u, 65536,     0 },
+    { MP7_ENGINE_DUAL_TONE,      860u, 4600u,  0u,       0u,  1000u,  50000u, 4000u,    0u,    0u, 65536,     0 },
     /* Claves */
-    { MP7_ENGINE_SINE_AD,   2120u,    0u,    0u,    0u,  1000u,   4000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD  ,     2120u,    0u,  0u,       0u,  1000u,   4000u,    0u,    0u,    0u,     0,     0 },
     /* Hihat */
-    { MP7_ENGINE_NOISE, 10000u, 0u, 0u, MP7_HIHAT_HIGHPASS_HZ, 10000u, 20000u, 0u, 0u, 512u, 0, 0 },
+    { MP7_ENGINE_NOISE    ,  HIHAT_BP,    0u,  0u, HIHAT_HP, 10000u,  20000u,    0u,    0u,  512u,     0,     0 },
     /* Rimshot */
-    { MP7_ENGINE_SINE_AD,   1650u,    0u,    0u,    0u,  1000u,   1000u,     0u,    0u,    0u,     0,     0 },
+    { MP7_ENGINE_SINE_AD  ,     1650u,    0u,  0u,       0u,  1000u,   1000u,    0u,    0u,    0u,     0,     0 },
     /* Cymbal 1 */
-    { MP7_ENGINE_NOISE,     5600u,    0u,    0u, 5500u,  1000u, 200000u,     0u,    0u,  154u,     0,     0 },
+    { MP7_ENGINE_NOISE    ,     5600u,    0u,  0u,    5500u,  1000u, 200000u,    0u,    0u,  154u,     0,     0 },
     /* Cymbal 2 */
-    { MP7_ENGINE_NOISE,     5600u,    0u,    0u, 5500u,  1000u, 200000u,     0u,    0u,   77u,     0,     0 },
+    { MP7_ENGINE_NOISE    ,     5600u,    0u,  0u,    5500u,  1000u, 200000u,    0u,    0u,   77u,     0,     0 },
     /* Tambourine */
-    { MP7_ENGINE_NOISE,     4600u,    0u,    0u, 6600u, 20000u,  80000u,     0u,    0u, 2560u,     0,     0 },
+    { MP7_ENGINE_NOISE    ,     4600u,    0u,  0u,    6600u, 20000u,  80000u,    0u,    0u, 2560u,     0,     0 },
     /* Guiro */
-    { MP7_ENGINE_GUIRO,     4100u,    0u,   65u,    0u,  1000u,   4000u,     0u,  600u,    0u,     0,     0 },
+    { MP7_ENGINE_GUIRO    ,     4100u,    0u, 65u,       0u,  1000u,   4000u,    0u,  600u,    0u,     0,     0 },
     /* Quijada */
-    { MP7_ENGINE_QUIJADA,   2700u,    0u,   25u,    0u, 50000u, 300000u,     0u, 3600u,    0u,     0,     0 }
+    { MP7_ENGINE_QUIJADA  ,     2700u,    0u, 25u,       0u, 50000u, 300000u,    0u, 3600u,    0u,     0,     0 }
 };
+
+#ifdef LIBPOPPY_EXTRA
+/* What the extended build exposes for each instrument.
+ *
+ * The cut-off is the band-pass center of the instrument, so the Hihat's
+ * band-pass is the one that moves; its high-pass stays at the factory
+ * value, and its band-pass cannot go below that high-pass. */
+const struct mp7_instr_param mp7_instr_params[MP7_INSTR_COUNT] = {
+    /* Bass */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Snare 1 */
+    { 1, 1, 0u, MP7_CUTOFF_MIN_HZ, MP7_CUTOFF_MAX_HZ, MP7_SNARE1_BANDPASS_HZ },
+    /* Snare 2 */
+    { 1, 1, 1u, MP7_CUTOFF_MIN_HZ, MP7_CUTOFF_MAX_HZ, MP7_SNARE2_BANDPASS_HZ },
+    /* Small Bongo */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Large Bongo */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Conga */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Cowbell */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Claves */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Hihat */
+    { 1, 1, 2u, MP7_HIHAT_CUTOFF_MIN_HZ, MP7_CUTOFF_MAX_HZ, MP7_HIHAT_BANDPASS_HZ },
+    /* Rimshot */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Cymbal 1 */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Cymbal 2 */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Tambourine */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Guiro */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u },
+    /* Quijada */
+    { 0, 0, MP7_PARAM_SLOT_NONE, 0u, 0u, 0u }
+};
+#endif /* LIBPOPPY_EXTRA */
 
 static void env_set(struct poppy_env *env,
                     uint32_t attack_us,
@@ -210,33 +258,62 @@ static void env_retime(struct poppy_env *env,
     }
 }
 
-void mp7_voice_apply_snare1_decay(struct mp7_context_s *ctx)
+/* The decay of an instrument, scaled by its decay multiplier.
+ *
+ * The multiplier is clamped to 0.25..4.0 by the setter, and the longest
+ * factory decay is 400 ms, so the scaled time always fits in 32 bits. */
+static uint32_t scaled_decay_us(const struct mp7_voice_config *config,
+                                int32_t decay_q16)
 {
-    struct mp7_voice *voice = &ctx->voices[MP7_INSTR_SNARE_1];
-    const struct mp7_voice_config *config = &voice_config[MP7_INSTR_SNARE_1];
-    int64_t scaled = ((int64_t)config->decay_us * (int64_t)ctx->snare1_decay_q16 +
+    int64_t scaled = ((int64_t)config->decay_us * (int64_t)decay_q16 +
                       (POPPY_Q16_ONE / 2)) / POPPY_Q16_ONE;
-    uint32_t decay_us;
 
     if (scaled < 0) {
         scaled = 0;
     }
-    if (scaled > 0xFFFFFFFFLL) {
-        scaled = 0xFFFFFFFFLL;
+    return (uint32_t)scaled;
+}
+
+/* Apply the decay multiplier of an instrument to its envelopes.
+ *
+ * Every instrument that has a decay multiplier is a noise voice, whose
+ * amplitude and tone envelopes both follow the factory decay, so one
+ * function covers all of them. */
+void mp7_voice_apply_decay(struct mp7_context_s *ctx, mp7_instr instr)
+{
+    struct mp7_voice *voice = &ctx->voices[instr];
+    const struct mp7_voice_config *config = &voice_config[instr];
+    uint8_t slot = mp7_instr_params[instr].slot;
+    uint32_t decay_us;
+
+    if (!mp7_instr_params[instr].has_decay) {
+        return;
     }
-    decay_us = (uint32_t)scaled;
+
+    decay_us = scaled_decay_us(config, ctx->instr_decay_q16[slot]);
 
     env_retime(&voice->amp_env, config->attack_us, decay_us, ctx->sample_rate);
     env_retime(&voice->aux_env, config->attack_us, decay_us, ctx->sample_rate);
 }
 
-void mp7_voice_apply_snare1_cutoff(struct mp7_context_s *ctx)
+/* Apply the cut-off of an instrument to its band-pass.
+ *
+ * The cut-off is the band-pass center of every instrument that has one.
+ * The Hihat's high-pass stays at the factory value, so the band-pass is
+ * the only filter the cut-off moves. */
+void mp7_voice_apply_cutoff(struct mp7_context_s *ctx, mp7_instr instr)
 {
-    struct mp7_voice *voice = &ctx->voices[MP7_INSTR_SNARE_1];
-    const struct mp7_voice_config *config = &voice_config[MP7_INSTR_SNARE_1];
+    struct mp7_voice *voice = &ctx->voices[instr];
+    const struct mp7_voice_config *config = &voice_config[instr];
+    uint8_t slot = mp7_instr_params[instr].slot;
     uint32_t limit = cutoff_limit_hz(ctx->sample_rate);
-    uint32_t freq_hz = ctx->snare1_bandpass_hz;
+    uint32_t freq_hz;
 
+    if (!mp7_instr_params[instr].has_cutoff) {
+        return;
+    }
+
+    freq_hz = ctx->instr_cutoff_hz[slot];
     if (freq_hz > limit) {
         freq_hz = limit;
     }
@@ -244,21 +321,6 @@ void mp7_voice_apply_snare1_cutoff(struct mp7_context_s *ctx)
     poppy_biquad_set_bandpass_coeffs(&voice->bandpass,
                                      freq_hz,
                                      config->res_q88,
-                                     ctx->sample_rate);
-}
-
-void mp7_voice_apply_hihat_cutoff(struct mp7_context_s *ctx)
-{
-    struct mp7_voice *voice = &ctx->voices[MP7_INSTR_HIHAT];
-    uint32_t limit = cutoff_limit_hz(ctx->sample_rate);
-    uint32_t freq_hz = ctx->hihat_highpass_hz;
-
-    if (freq_hz > limit) {
-        freq_hz = limit;
-    }
-
-    poppy_biquad_set_highpass_coeffs(&voice->highpass,
-                                     freq_hz,
                                      ctx->sample_rate);
 }
 #endif /* LIBPOPPY_EXTRA */
@@ -280,9 +342,14 @@ void mp7_voice_init_all(struct mp7_context_s *ctx)
 #ifdef LIBPOPPY_EXTRA
     /* Re-apply any user-modified synthesis parameters after the voices have
      * been reset to their factory defaults. */
-    mp7_voice_apply_snare1_decay(ctx);
-    mp7_voice_apply_snare1_cutoff(ctx);
-    mp7_voice_apply_hihat_cutoff(ctx);
+    for (i = 0; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+        if (mp7_instr_params[i].has_decay) {
+            mp7_voice_apply_decay(ctx, (mp7_instr)i);
+        }
+        if (mp7_instr_params[i].has_cutoff) {
+            mp7_voice_apply_cutoff(ctx, (mp7_instr)i);
+        }
+    }
 #endif
 }
 

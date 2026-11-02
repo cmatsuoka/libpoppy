@@ -18,7 +18,7 @@ process).
 There are two banks of preset rhythms. Bank A contains Waltz, Samba, Mambo, Rumba,
 Bossa Nova, Rock 1, Rock 3, March 2/4, and Swing. Bank B has Jazz Waltz, Meringue,
 Cha-Cha, Beguine, Habanera, Slow Rock, Rock 2, Rock 4, March 6/8 and Latin Swing.
-Patterns in the same bankcan be combined by selecting multiple rhythms at the same
+Patterns in the same bank can be combined by selecting multiple rhythms at the same
 time.
 
 A host that wants patterns of its own has a second, host-writable set of 20
@@ -162,20 +162,29 @@ controls, and they start from the factory values, so a context that never
 touches them sounds exactly like the preset build.
 
 ```c
-mp7_set_accent_gain(ctx, 78643);    /* accented columns, 1.2x (Q16 units) */
-mp7_set_snare1_decay(ctx, 65536);   /* Snare 1 decay, 1.0x (Q16 units) */
-mp7_set_snare1_cutoff(ctx, 5500);   /* Snare 1 band-pass, Hz */
-mp7_set_hihat_cutoff(ctx, 1000);    /* Hihat high-pass, Hz */
+mp7_set_accent_gain(ctx, 78643);                       /* accented columns, 1.2x (Q16 units) */
+mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_1, 65536);    /* Snare 1 decay, 1.0x (Q16 units) */
+mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_2, 65536);    /* Snare 2 decay, 1.0x (Q16 units) */
+mp7_set_instr_decay(ctx, MP7_INSTR_HIHAT, 65536);      /* Hihat decay, 1.0x (Q16 units) */
+mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_1, 5500);    /* Snare 1 band-pass, Hz */
+mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_2, 5500);    /* Snare 2 band-pass, Hz */
+mp7_set_instr_cutoff(ctx, MP7_INSTR_HIHAT, 10000);     /* Hihat band-pass, Hz */
 ```
 
 The accent gain applies to user-pattern columns that set the
 `MP7_PATTERN_ACCENT` bit, and is read when the column fires, so a change
-takes effect on the notes triggered after it. The Snare 1 decay scales the
-factory decay time; a note that is already sounding keeps playing and decays
-at the new rate. The two cut-offs move the Snare 1 band-pass centre and the
-Hihat high-pass. None of them costs anything per sample: the accent is folded
-into the gain the mixer already applies to a voice, and the other three only
-recompute coefficients between blocks.
+takes effect on the notes triggered after it. The decay controls scale the
+factory decay time of the Snare 1, Snare 2 and Hihat; a note that is already
+sounding keeps playing and decays at the new rate. The cut-offs move the
+band-pass centre of the instrument, for all three of them. The Hihat also
+has a high-pass, which stays at its factory value of 1000 Hz: it removes
+the low end of the noise, and moving it above the band-pass would only dull
+the sound instead of opening it up.
+None of them costs anything per sample: the accent is folded into the gain
+the mixer already applies to a voice, and the others only recompute
+coefficients between blocks.
+
+`mp7_get_instr_decay()` and `mp7_get_instr_cutoff()` read the values back.
 
 The cut-offs are also limited to two fifths of the sample rate, because a
 biquad is only stable below Nyquist. At 44100 Hz that limit is above

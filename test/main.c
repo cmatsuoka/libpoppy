@@ -1894,21 +1894,25 @@ static int command_user(void)
         {
             int32_t default_decay = ctx->voices[MP7_INSTR_SNARE_1].amp_env.decay_coef;
 
-            mp7_set_snare1_decay(ctx, 2 * POPPY_Q16_ONE);
+            mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_1, 2 * POPPY_Q16_ONE);
             if (ctx->voices[MP7_INSTR_SNARE_1].amp_env.decay_coef >=
                 default_decay) {
                 fail("doubling Snare 1 decay did not lengthen the decay");
             }
-            mp7_set_snare1_decay(ctx, POPPY_Q16_ONE / 2);
+            mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_1, POPPY_Q16_ONE / 2);
             if (ctx->voices[MP7_INSTR_SNARE_1].amp_env.decay_coef <=
                 default_decay) {
                 fail("halving Snare 1 decay did not shorten the decay");
             }
         }
 
-        mp7_set_snare1_decay(ctx, 8 * POPPY_Q16_ONE);
-        if (ctx->snare1_decay_q16 != 4 * POPPY_Q16_ONE) {
+        mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_1, 8 * POPPY_Q16_ONE);
+        if (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_1) != 4 * POPPY_Q16_ONE) {
             fail("Snare 1 decay multiplier is not clamped to 4.0");
+        }
+        mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_1, POPPY_Q16_ONE / 8);
+        if (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_1) != POPPY_Q16_ONE / 4) {
+            fail("Snare 1 decay multiplier is not clamped to 0.25");
         }
 
         /* Snare 1 band-pass frequency. */
@@ -1916,49 +1920,167 @@ static int command_user(void)
         {
             int32_t default_b0 = ctx->voices[MP7_INSTR_SNARE_1].bandpass.b0;
 
-            mp7_set_snare1_cutoff(ctx, 10000u);
-            if (ctx->snare1_bandpass_hz != 10000u) {
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_1, 10000u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_1) != 10000u) {
                 fail("Snare 1 cut-off frequency was not stored");
             }
             if (ctx->voices[MP7_INSTR_SNARE_1].bandpass.b0 == default_b0) {
                 fail("Snare 1 cut-off frequency change did not update the bandpass");
             }
 
-            mp7_set_snare1_cutoff(ctx, 500u);
-            if (ctx->snare1_bandpass_hz != 1000u) {
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_1, 500u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_1) != 1000u) {
                 fail("Snare 1 cut-off frequency is not clamped to the minimum");
+            }
+
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_1, 20000u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_1) != 15000u) {
+                fail("Snare 1 cut-off frequency is not clamped to the maximum");
             }
         }
 
-        /* Hihat high-pass frequency. */
+        /* Hihat band-pass frequency. The high-pass stays at 1000 Hz. */
         mp7_init(ctx, sample_rate);
         {
-            int32_t default_b0 = ctx->voices[MP7_INSTR_HIHAT].highpass.b0;
+            int32_t default_b0 = ctx->voices[MP7_INSTR_HIHAT].bandpass.b0;
+            int32_t default_hp = ctx->voices[MP7_INSTR_HIHAT].highpass.b0;
 
-            mp7_set_hihat_cutoff(ctx, 5000u);
-            if (ctx->hihat_highpass_hz != 5000u) {
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_HIHAT, 5000u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_HIHAT) != 5000u) {
                 fail("Hihat cut-off frequency was not stored");
             }
-            if (ctx->voices[MP7_INSTR_HIHAT].highpass.b0 == default_b0) {
-                fail("Hihat cut-off frequency change did not update the highpass");
+            if (ctx->voices[MP7_INSTR_HIHAT].bandpass.b0 == default_b0) {
+                fail("Hihat cut-off frequency change did not update the bandpass");
+            }
+            if (ctx->voices[MP7_INSTR_HIHAT].highpass.b0 != default_hp) {
+                fail("Hihat cut-off frequency change moved the high-pass");
             }
 
-            mp7_set_hihat_cutoff(ctx, 20000u);
-            if (ctx->hihat_highpass_hz != 15000u) {
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_HIHAT, 20000u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_HIHAT) != 15000u) {
                 fail("Hihat cut-off frequency is not clamped to the maximum");
             }
+
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_HIHAT, 500u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_HIHAT) != 2000u) {
+                fail("Hihat cut-off frequency is not clamped to the minimum");
+            }
+        }
+
+        /* Snare 2 decay multiplier and band-pass cut-off. */
+        mp7_init(ctx, sample_rate);
+        {
+            int32_t default_decay = ctx->voices[MP7_INSTR_SNARE_2].amp_env.decay_coef;
+            int32_t default_b0 = ctx->voices[MP7_INSTR_SNARE_2].bandpass.b0;
+
+            mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_2, 2 * POPPY_Q16_ONE);
+            if (ctx->voices[MP7_INSTR_SNARE_2].amp_env.decay_coef >= default_decay) {
+                fail("doubling Snare 2 decay did not lengthen the decay");
+            }
+
+            mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_2, 8 * POPPY_Q16_ONE);
+            if (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_2) != 4 * POPPY_Q16_ONE) {
+                fail("Snare 2 decay multiplier is not clamped to 4.0");
+            }
+            mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_2, POPPY_Q16_ONE / 8);
+            if (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_2) != POPPY_Q16_ONE / 4) {
+                fail("Snare 2 decay multiplier is not clamped to 0.25");
+            }
+
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_2, 10000u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_2) != 10000u) {
+                fail("Snare 2 cut-off frequency was not stored");
+            }
+            if (ctx->voices[MP7_INSTR_SNARE_2].bandpass.b0 == default_b0) {
+                fail("Snare 2 cut-off frequency change did not update the bandpass");
+            }
+
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_2, 500u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_2) != 1000u) {
+                fail("Snare 2 cut-off frequency is not clamped to the minimum");
+            }
+
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_2, 20000u);
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_2) != 15000u) {
+                fail("Snare 2 cut-off frequency is not clamped to the maximum");
+            }
+        }
+
+        /* Hihat decay multiplier. */
+        mp7_init(ctx, sample_rate);
+        {
+            int32_t default_decay = ctx->voices[MP7_INSTR_HIHAT].amp_env.decay_coef;
+
+            mp7_set_instr_decay(ctx, MP7_INSTR_HIHAT, 2 * POPPY_Q16_ONE);
+            if (ctx->voices[MP7_INSTR_HIHAT].amp_env.decay_coef >= default_decay) {
+                fail("doubling Hihat decay did not lengthen the decay");
+            }
+
+            mp7_set_instr_decay(ctx, MP7_INSTR_HIHAT, 8 * POPPY_Q16_ONE);
+            if (mp7_get_instr_decay(ctx, MP7_INSTR_HIHAT) != 4 * POPPY_Q16_ONE) {
+                fail("Hihat decay multiplier is not clamped to 4.0");
+            }
+            mp7_set_instr_decay(ctx, MP7_INSTR_HIHAT, POPPY_Q16_ONE / 8);
+            if (mp7_get_instr_decay(ctx, MP7_INSTR_HIHAT) != POPPY_Q16_ONE / 4) {
+                fail("Hihat decay multiplier is not clamped to 0.25");
+            }
+        }
+
+        /* An instrument without the parameter ignores the call. */
+        mp7_init(ctx, sample_rate);
+        {
+            int32_t bass_decay = ctx->voices[MP7_INSTR_BASS].amp_env.decay_coef;
+            int32_t bass_b0 = ctx->voices[MP7_INSTR_BASS].bandpass.b0;
+
+            mp7_set_instr_decay(ctx, MP7_INSTR_BASS, 3 * POPPY_Q16_ONE);
+            mp7_set_instr_cutoff(ctx, MP7_INSTR_BASS, 3000u);
+            if (ctx->voices[MP7_INSTR_BASS].amp_env.decay_coef != bass_decay) {
+                fail("a decay change reached an instrument that has none");
+            }
+            if (ctx->voices[MP7_INSTR_BASS].bandpass.b0 != bass_b0) {
+                fail("a cut-off change reached an instrument that has none");
+            }
+            if (mp7_get_instr_decay(ctx, MP7_INSTR_BASS) != 0) {
+                fail("a decay change was stored for an instrument that has none");
+            }
+            if (mp7_get_instr_cutoff(ctx, MP7_INSTR_BASS) != 0u) {
+                fail("a cut-off change was stored for an instrument that has none");
+            }
+        }
+
+        /* The getters mirror the setters, and answer 0 for a null
+         * context. */
+        mp7_init(ctx, sample_rate);
+        if (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_1) != POPPY_Q16_ONE) {
+            fail("the decay getter did not return the default");
+        }
+        if (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_1) != MP7_SNARE1_BANDPASS_HZ) {
+            fail("the cut-off getter did not return the default");
+        }
+        if (mp7_get_instr_cutoff(ctx, MP7_INSTR_HIHAT) != MP7_HIHAT_BANDPASS_HZ) {
+            fail("the Hihat cut-off getter did not return the default");
+        }
+        if ((mp7_get_instr_decay(0, MP7_INSTR_SNARE_1) != 0) ||
+            (mp7_get_instr_cutoff(0, MP7_INSTR_SNARE_1) != 0u)) {
+            fail("the getters did not return 0 for a null context");
         }
 
         /* mp7_reset() restores the synthesis defaults. */
         mp7_set_accent_gain(ctx, POPPY_Q16_ONE / 2);
-        mp7_set_snare1_decay(ctx, 4 * POPPY_Q16_ONE);
-        mp7_set_snare1_cutoff(ctx, 10000u);
-        mp7_set_hihat_cutoff(ctx, 5000u);
+        mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_1, 4 * POPPY_Q16_ONE);
+        mp7_set_instr_decay(ctx, MP7_INSTR_SNARE_2, 4 * POPPY_Q16_ONE);
+        mp7_set_instr_decay(ctx, MP7_INSTR_HIHAT, 4 * POPPY_Q16_ONE);
+        mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_1, 10000u);
+        mp7_set_instr_cutoff(ctx, MP7_INSTR_SNARE_2, 10000u);
+        mp7_set_instr_cutoff(ctx, MP7_INSTR_HIHAT, 5000u);
         mp7_reset(ctx);
         if ((mp7_get_accent_gain(ctx) != MP7_PATTERN_ACCENT_GAIN_Q16) ||
-            (ctx->snare1_decay_q16 != POPPY_Q16_ONE) ||
-            (ctx->snare1_bandpass_hz != MP7_SNARE1_BANDPASS_HZ) ||
-            (ctx->hihat_highpass_hz != MP7_HIHAT_HIGHPASS_HZ)) {
+            (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_1) != POPPY_Q16_ONE) ||
+            (mp7_get_instr_decay(ctx, MP7_INSTR_SNARE_2) != POPPY_Q16_ONE) ||
+            (mp7_get_instr_decay(ctx, MP7_INSTR_HIHAT) != POPPY_Q16_ONE) ||
+            (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_1) != MP7_SNARE1_BANDPASS_HZ) ||
+            (mp7_get_instr_cutoff(ctx, MP7_INSTR_SNARE_2) != MP7_SNARE2_BANDPASS_HZ) ||
+            (mp7_get_instr_cutoff(ctx, MP7_INSTR_HIHAT) != MP7_HIHAT_BANDPASS_HZ)) {
             fail("mp7_reset() did not restore the extended synthesis defaults");
         } else {
             ok("mp7_reset() restores the extended synthesis defaults");
@@ -1966,9 +2088,12 @@ static int command_user(void)
 
         /* A null context is ignored by every setter. */
         mp7_set_accent_gain(0, POPPY_Q16_ONE);
-        mp7_set_snare1_decay(0, POPPY_Q16_ONE);
-        mp7_set_snare1_cutoff(0, 1000u);
-        mp7_set_hihat_cutoff(0, 1000u);
+        mp7_set_instr_decay(0, MP7_INSTR_SNARE_1, POPPY_Q16_ONE);
+        mp7_set_instr_decay(0, MP7_INSTR_SNARE_2, POPPY_Q16_ONE);
+        mp7_set_instr_decay(0, MP7_INSTR_HIHAT, POPPY_Q16_ONE);
+        mp7_set_instr_cutoff(0, MP7_INSTR_SNARE_1, 1000u);
+        mp7_set_instr_cutoff(0, MP7_INSTR_SNARE_2, 1000u);
+        mp7_set_instr_cutoff(0, MP7_INSTR_HIHAT, 1000u);
         ok("the extended synthesis setters ignore a null context");
 
         if ((unsigned int)failures == failures_before) {
@@ -1995,7 +2120,7 @@ static int command_user(void)
             still_playing = 0;
         }
 
-        mp7_set_snare1_decay(live, 2 * POPPY_Q16_ONE);
+        mp7_set_instr_decay(live, MP7_INSTR_SNARE_1, 2 * POPPY_Q16_ONE);
 
         if (still_playing) {
             if (!snare->active) {
@@ -2027,17 +2152,30 @@ static int command_user(void)
 
         for (r = 0u; r < (sizeof(rates) / sizeof(rates[0])); r++) {
             struct mp7_context_s *low = context_new();
-            double hp_pole;
             double bp_pole;
 
             mp7_init(low, rates[r]);
-            mp7_set_snare1_cutoff(low, 15000u);
-            mp7_set_hihat_cutoff(low, 15000u);
+            mp7_set_instr_cutoff(low, MP7_INSTR_SNARE_1, 15000u);
+            mp7_set_instr_cutoff(low, MP7_INSTR_SNARE_2, 15000u);
+            mp7_set_instr_cutoff(low, MP7_INSTR_HIHAT, 15000u);
 
-            hp_pole = biquad_pole_radius(&low->voices[MP7_INSTR_HIHAT].highpass);
+            /* The cut-off moves the band-pass of all three instruments;
+             * the Hihat's high-pass stays at its factory value. */
             bp_pole = biquad_pole_radius(&low->voices[MP7_INSTR_SNARE_1].bandpass);
+            if (biquad_pole_radius(&low->voices[MP7_INSTR_SNARE_2].bandpass) >= 1.0) {
+                fail("a cut-off above Nyquist made the Snare 2 biquad unstable");
+                all_stable = 0;
+            }
+            if (biquad_pole_radius(&low->voices[MP7_INSTR_HIHAT].bandpass) >= 1.0) {
+                fail("a cut-off above Nyquist made the Hihat biquad unstable");
+                all_stable = 0;
+            }
+            if (biquad_pole_radius(&low->voices[MP7_INSTR_HIHAT].highpass) >= 1.0) {
+                fail("the fixed Hihat high-pass became unstable");
+                all_stable = 0;
+            }
 
-            if ((hp_pole >= 1.0) || (bp_pole >= 1.0)) {
+            if (bp_pole >= 1.0) {
                 fail("a cut-off above Nyquist made the biquad unstable");
                 all_stable = 0;
             }

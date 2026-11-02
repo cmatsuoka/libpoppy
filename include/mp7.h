@@ -515,33 +515,62 @@ void mp7_set_accent_gain(mp7_context ctx, int32_t gain_q16);
  * Returns 0 when `ctx` is null. */
 int32_t mp7_get_accent_gain(const void *ctx);
 
-/* Set the Snare 1 decay time multiplier.
+/* Set the decay time multiplier for an instrument.
  *
- * 1.0 is the factory decay. Values below 1.0 shorten the decay; values
- * above 1.0 lengthen it. Clamped to 0.25..4.0.
+ * `instr` selects the instrument. The supported instruments are
+ * MP7_INSTR_SNARE_1, MP7_INSTR_SNARE_2 and MP7_INSTR_HIHAT; the call
+ * is ignored for any other instrument so the API can be extended
+ * later without a signature change.
+ *
+ * 1.0 is the factory decay, and it is the default for every
+ * instrument. Values below 1.0 shorten the decay; values above 1.0
+ * lengthen it. Clamped to 0.25..4.0.
  *
  * A note that is already sounding is not cut off: it keeps playing and
  * decays at the new rate from the next sample. */
-void mp7_set_snare1_decay(mp7_context ctx, int32_t decay_q16);
+void mp7_set_instr_decay(mp7_context ctx, mp7_instr instr, int32_t decay_q16);
 
-/* Set the Snare 1 band-pass filter cut-off frequency in Hz.
+/* Return the decay time multiplier of an instrument in Q16 units, where
+ * 65536 is 1.0 (the factory decay).
  *
- * The factory default is 5500 Hz. Clamped to 1000..15000.
+ * The value is the one the library holds, after the clamp of
+ * mp7_set_instr_decay(), so it is what the voice actually plays.
+ *
+ * Returns 0 when `ctx` is null, `instr` is out of range, or the
+ * instrument has no decay multiplier. */
+int32_t mp7_get_instr_decay(const void *ctx, mp7_instr instr);
+
+/* Set the filter cut-off frequency for an instrument in Hz.
+ *
+ * `instr` selects the instrument. The supported instruments are
+ * MP7_INSTR_SNARE_1, MP7_INSTR_SNARE_2 and MP7_INSTR_HIHAT; the call
+ * is ignored for any other instrument so the API can be extended
+ * later without a signature change.
+ *
+ * The cut-off is the center frequency of the instrument's band-pass:
+ * the Snare 1 and the Snare 2 range over 1000..15000 Hz, and the
+ * Hihat over 2000..15000 Hz. The factory defaults are 5500 Hz for the
+ * two snares and 10000 Hz for the Hihat.
+ *
+ * The Hihat also has a high-pass, which stays at its factory value of
+ * 1000 Hz: it removes the low end of the noise, and moving it above
+ * the band-pass would only dull the sound instead of opening it up.
  *
  * The filter is stable only below the sample rate's Nyquist
  * frequency, so the cut-off is also limited to two fifths of the
  * sample rate. At 44100 Hz that is above 15000 Hz, so the whole
  * documented range is available at the default rate. */
-void mp7_set_snare1_cutoff(mp7_context ctx, uint32_t freq_hz);
+void mp7_set_instr_cutoff(mp7_context ctx, mp7_instr instr, uint32_t freq_hz);
 
-/* Set the Hihat high-pass filter cut-off frequency in Hz.
+/* Return the cut-off frequency of an instrument in Hz.
  *
- * The factory default is 1000 Hz. Clamped to 500..15000.
+ * The value is the one the library holds, after the clamp of
+ * mp7_set_instr_cutoff(). The sample-rate limit of the filter is not
+ * part of it: it is applied when the filter coefficients are computed.
  *
- * As with the Snare 1 cut-off, the filter is stable only below
- * Nyquist, so the cut-off is also limited to two fifths of the
- * sample rate. */
-void mp7_set_hihat_cutoff(mp7_context ctx, uint32_t freq_hz);
+ * Returns 0 when `ctx` is null, `instr` is out of range, or the
+ * instrument has no cut-off. */
+uint32_t mp7_get_instr_cutoff(const void *ctx, mp7_instr instr);
 #endif /* LIBPOPPY_EXTRA */
 
 #ifdef __cplusplus

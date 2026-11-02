@@ -73,9 +73,20 @@ void mp7_init(mp7_context ctx, uint32_t sample_rate)
      * configuration in src/mp7_voice.c. Set them before mp7_voice_init_all()
      * so the voice setup can apply them. */
     c->accent_gain_q16 = MP7_PATTERN_ACCENT_GAIN_Q16;
-    c->snare1_decay_q16 = POPPY_Q16_ONE;
-    c->snare1_bandpass_hz = MP7_SNARE1_BANDPASS_HZ;
-    c->hihat_highpass_hz = MP7_HIHAT_HIGHPASS_HZ;
+    {
+        unsigned int i;
+
+        for (i = 0u; i < (unsigned int)MP7_INSTR_COUNT; i++) {
+            const struct mp7_instr_param *param = &mp7_instr_params[i];
+
+            if (param->slot == MP7_PARAM_SLOT_NONE) {
+                continue;
+            }
+            /* The decay multiplier is 1.0, the factory decay. */
+            c->instr_decay_q16[param->slot] = POPPY_Q16_ONE;
+            c->instr_cutoff_hz[param->slot] = param->cutoff_default_hz;
+        }
+    }
 #endif
 
     /* The mixer is initialized first: the voices take their pan from the
@@ -610,7 +621,7 @@ int32_t mp7_get_accent_gain(const void *ctx)
     return c->accent_gain_q16;
 }
 
-void mp7_set_snare1_decay(mp7_context ctx, int32_t decay_q16)
+void mp7_set_instr_decay(mp7_context ctx, mp7_instr instr, int32_t decay_q16)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
 
@@ -618,47 +629,83 @@ void mp7_set_snare1_decay(mp7_context ctx, int32_t decay_q16)
         return;
     }
 
-    c->snare1_decay_q16 = poppy_clamp_i32(decay_q16, POPPY_Q16_ONE / 4,
-                                          4 * POPPY_Q16_ONE);
-    mp7_voice_apply_snare1_decay(c);
+    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return;
+    }
+
+    if (!mp7_instr_params[instr].has_decay) {
+        return;
+    }
+
+    c->instr_decay_q16[mp7_instr_params[instr].slot] =
+        poppy_clamp_i32(decay_q16, MP7_DECAY_MIN_Q16, MP7_DECAY_MAX_Q16);
+    mp7_voice_apply_decay(c, instr);
 }
 
-void mp7_set_snare1_cutoff(mp7_context ctx, uint32_t freq_hz)
+int32_t mp7_get_instr_decay(const void *ctx, mp7_instr instr)
 {
-    struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
 
     if (c == 0) {
-        return;
+        return 0;
     }
 
-    if (freq_hz < MP7_SNARE1_CUTOFF_MIN_HZ) {
-        freq_hz = MP7_SNARE1_CUTOFF_MIN_HZ;
-    }
-    if (freq_hz > MP7_SNARE1_CUTOFF_MAX_HZ) {
-        freq_hz = MP7_SNARE1_CUTOFF_MAX_HZ;
+    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return 0;
     }
 
-    c->snare1_bandpass_hz = freq_hz;
-    mp7_voice_apply_snare1_cutoff(c);
+    if (!mp7_instr_params[instr].has_decay) {
+        return 0;
+    }
+
+    return c->instr_decay_q16[mp7_instr_params[instr].slot];
 }
 
-void mp7_set_hihat_cutoff(mp7_context ctx, uint32_t freq_hz)
+void mp7_set_instr_cutoff(mp7_context ctx, mp7_instr instr, uint32_t freq_hz)
 {
     struct mp7_context_s *c = (struct mp7_context_s *)ctx;
+    const struct mp7_instr_param *param;
 
     if (c == 0) {
         return;
     }
 
-    if (freq_hz < MP7_HIHAT_CUTOFF_MIN_HZ) {
-        freq_hz = MP7_HIHAT_CUTOFF_MIN_HZ;
-    }
-    if (freq_hz > MP7_HIHAT_CUTOFF_MAX_HZ) {
-        freq_hz = MP7_HIHAT_CUTOFF_MAX_HZ;
+    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return;
     }
 
-    c->hihat_highpass_hz = freq_hz;
-    mp7_voice_apply_hihat_cutoff(c);
+    param = &mp7_instr_params[instr];
+    if (!param->has_cutoff) {
+        return;
+    }
+
+    if (freq_hz < param->cutoff_min_hz) {
+        freq_hz = param->cutoff_min_hz;
+    }
+    if (freq_hz > param->cutoff_max_hz) {
+        freq_hz = param->cutoff_max_hz;
+    }
+    c->instr_cutoff_hz[param->slot] = freq_hz;
+    mp7_voice_apply_cutoff(c, instr);
+}
+
+uint32_t mp7_get_instr_cutoff(const void *ctx, mp7_instr instr)
+{
+    const struct mp7_context_s *c = (const struct mp7_context_s *)ctx;
+
+    if (c == 0) {
+        return 0;
+    }
+
+    if ((unsigned int)instr >= (unsigned int)MP7_INSTR_COUNT) {
+        return 0;
+    }
+
+    if (!mp7_instr_params[instr].has_cutoff) {
+        return 0;
+    }
+
+    return c->instr_cutoff_hz[mp7_instr_params[instr].slot];
 }
 #endif /* LIBPOPPY_EXTRA */
 
